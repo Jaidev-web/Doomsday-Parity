@@ -8,6 +8,7 @@ import {
   completeEmailSignIn,
   getPendingEmailLink,
 } from '@/lib/firebase';
+import { api } from '@/lib/api';
 
 export default function EmailLinkCallbackPage() {
   const router = useRouter();
@@ -35,10 +36,15 @@ export default function EmailLinkCallbackPage() {
       const credential = await completeEmailSignIn(address, window.location.href, pending?.name || '');
       const signedInEmail = credential.user.email || address;
       const name = pending?.name || credential.user.displayName || signedInEmail.split('@')[0];
-      const session = JSON.stringify({
-        email: signedInEmail,
+      const token = await credential.user.getIdToken();
+      const profile = await api.auth.verifyToken(token, role, {
         name,
-        role,
+        phone: pending?.phone || null,
+        company: pending?.company || null,
+        title: pending?.title || null,
+      });
+      const session = JSON.stringify({
+        ...profile,
         authenticatedAt: new Date().toISOString(),
       });
 

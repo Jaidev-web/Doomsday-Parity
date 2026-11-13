@@ -130,16 +130,9 @@ c:\Doomsday-Parity\
 
 ## 4. Authentication Architecture & Security Details
 
-The intended login/signup design uses Firebase email-link sign-in for both roles. The current files are only partially migrated and must be reconciled before auth can work:
+The login/signup design uses Firebase email-link sign-in for both roles. Each login page sends the link directly; signup adds name and role-specific profile fields to locally stored pending link metadata. The callback completes Firebase client sign-in, obtains an ID token, calls the JSON-based `/api/auth/verify-token` endpoint, and stores the role-specific app session only after backend verification succeeds. The backend shares one Firebase Admin app with Firestore, requires a verified email claim, and returns a clear 503 if Admin credentials are not configured. A previously consumed Firebase action link can retry backend profile verification while the same user remains signed in.
 
-1. **Candidate and HR login pages** (`frontend/app/login/candidate/page.jsx`, `frontend/app/login/hr/page.jsx`) still call `api.auth.login()` and `api.auth.signup()` before sending the Firebase link.
-2. **API client** (`frontend/lib/api.js`) currently exposes only `api.auth.verifyToken()`. The signup/login methods those pages call no longer exist, so login and signup fail before a link is sent.
-3. **Email-link callback** (`frontend/app/auth/email-link/page.jsx`) completes Firebase client sign-in and stores a session, but does not call `api.auth.verifyToken()` with the Firebase ID token. The backend therefore does not receive verified user/profile data.
-4. **Backend token endpoint** (`backend/app/routers/auth.py`) declares `token` and `role` as plain function parameters. FastAPI treats these as query parameters, while the frontend API helper sends JSON. Use a Pydantic request model and send the token in a body; return a clear error when Firebase Admin cannot verify it.
-5. **Firebase Admin startup** (`backend/app/main.py`) calls `firebase_admin.initialize_app()` even when the credential path is missing. This relies on Application Default Credentials and can fail locally; it may also conflict with initialization inside `backend/app/db/firebase.py`. Initialize Firebase Admin once and share the app instance.
-6. **Firebase client setup** is in `frontend/lib/firebase.js`. Copy `frontend/.env.firebase.example` to `frontend/.env.local` and fill in the Firebase web app values. In Firebase Console enable Email/Password and Email link sign-in, and authorize `localhost` plus the deployed app domain.
-7. Login/signup use click-through links rather than numeric OTPs. `OtpVerification.jsx` remains only in the demo forgot-password UI, which is still a local mock and is not backed by Firebase.
-8. The pre-filled demo login buttons were removed because their placeholder email addresses cannot receive Firebase links. Use an inbox you can access.
+Firebase client setup is in `frontend/lib/firebase.js`. Copy `frontend/.env.firebase.example` to `frontend/.env.local` and fill in the Firebase web app values. In Firebase Console enable Email/Password and Email link sign-in, and authorize `localhost` plus the deployed app domain. `OtpVerification.jsx` and `ForgotPasswordFlow.jsx` are legacy demo recovery components and are not used by the email-link login/signup forms. The pre-filled demo login buttons were removed because their placeholder email addresses cannot receive Firebase links; use an inbox you can access.
 
 The backend profile endpoint is intended to verify Firebase ID tokens before creating or retrieving role-specific profiles. Do not treat the current `sessionStorage` value alone as proof of backend authentication.
 
@@ -226,8 +219,9 @@ pnpm run dev
 ### B. Cleaned HR Top Navigation
 - Removed the redundant `Public Site` button and divider from the HR top bar in `frontend/app/dashboard/layout.jsx`. Clicking the TrustHire logo in the upper-left of the sidebar navigates directly to the Home page (`/`).
 
-### C. Removed Direct Public Profile Bypass ("View Marcus Rivera Dossier")
+### C. Removed Direct Cross-Portal Bridges & Public Profile Bypasses
 - Removed the public "View Marcus Rivera Dossier" button on the landing page (`frontend/app/page.js`), enforcing that all candidate dossiers and trust records remain gated behind the authenticated HR portal.
+- Removed the "Switch to HR Portal →" link from the Candidate Portal navigation header (`frontend/app/candidate/layout.jsx`), maintaining strict role segregation so candidate environments cannot directly bridge into administrative HR routes.
 
 ### D. Tailwind CSS v4 & Next.js 16 Turbopack Fix
 - Compiled `@tailwindcss/cli` output into `frontend/app/tailwind.css` and linked it directly in `frontend/app/layout.js`, ensuring all utility classes, colors, gradients, and responsive layouts render properly without Turbopack subprocess conflicts.
@@ -237,22 +231,64 @@ pnpm run dev
 - **Dynamic Database Switching**: Introduced `DatabaseManager` in `backend/app/db/manager.py`. When `DEMO_MODE=False` is set in `.env`, the system automatically routes all CRUD operations to live Firestore collections instead of in-memory dictionaries.
 - **Seeding Support**: The `seed_demo_data()` function now supports pushing demo candidates directly to Firebase on the first run of a new environment.
 
-### F. Firebase Email-Link Authentication (in progress)
+### F. Firebase Email-Link Authentication
 - The requested sign-in experience is a Firebase email sign-in link. Login/signup pages show an inbox notice and resend action; numeric codes are no longer used for those flows.
 - Added the Firebase Web SDK (`firebase` dependency) to `frontend/package.json`, `package-lock.json`, and `pnpm-lock.yaml`.
 - Added `frontend/lib/firebase.js`, `frontend/components/auth/EmailLinkNotice.jsx`, and `frontend/app/auth/email-link/page.jsx`. The callback completes `signInWithEmailLink`, writes a role-specific session to `sessionStorage`, then redirects to the Candidate or HR area.
 - Added `frontend/.env.firebase.example`. Copy it to `frontend/.env.local`, fill the Firebase web app config, enable Email/Password plus Email link sign-in in Firebase Console, and authorize `localhost` and the deployed domain.
-- The current Firebase ID-token migration changed `backend/app/routers/auth.py`, `backend/app/models/user.py`, `backend/app/main.py`, and `frontend/lib/api.js` to remove password endpoints and add Firebase token verification. It is **not complete**: the login pages still call the removed `api.auth.login/signup`; the email-link callback does not send an ID token to the backend; and `/api/auth/verify-token` currently expects query parameters while the API helper sends a JSON body. `firebase_admin.initialize_app()` is also called without an explicit credential and may fail or conflict with Firestore initialization. Fix these mismatches before using auth.
+- Firebase email-link auth is now wired end to end for both candidate and HR login/signup. Forms send a Firebase email link directly (password fields and stale password reset UI removed); pending signup metadata is saved in local storage and returned to the backend after the user clicks the link. The callback gets the Firebase ID token, posts it as JSON to `/api/auth/verify-token`, and only then stores the app session. Backend token verification uses a Pydantic JSON request, verifies the token through a shared Firebase Admin app, and creates/updates a role-specific user profile. Firebase Admin and Firestore use the same initializer; demo mode starts without Firebase config and the token endpoint returns 503 until credentials/project configuration is supplied. The callback permits retrying profile verification after the one-time Firebase link was already consumed, provided the same user remains signed in.
 - Backend Firebase Admin credentials/project setup is required to verify ID tokens. The Gmail App Password discussed earlier is not used by this Firebase flow; revoke it if it was a real credential.
-- The standalone `ForgotPasswordFlow` remains a local demo flow using a fake OTP and does not currently use Firebase.
+- `ForgotPasswordFlow` remains available elsewhere in the project as a standalone demo component, but it is no longer used on these passwordless sign-in pages.
+
+### G. Candidates Directory Revamp & Sidebar Streamlining
+- **Sidebar Streamlining**: Removed the standalone "Credentials" (`/dashboard/credentials`) and "Identity" (`/dashboard/identity`) items from the HR sidebar navigation in `frontend/app/dashboard/layout.jsx`. The HR sidebar now cleanly presents: Overview, Candidates, Interviews, Reports, and Settings.
+- **Interactive Candidate Cards with Hover Scale**:
+  - Revamped `frontend/components/candidate/CandidateCard.jsx` so each candidate card is entirely clickable with keyboard accessibility (`Enter`/`Space`).
+  - Added subtle hover scaling and elevated shadows (`transform transition-all duration-200 hover:scale-[1.02] hover:shadow-xl hover:border-indigo-300 cursor-pointer`).
+  - Clicking the card directly opens the complete candidate dossier (`/dashboard/candidates/[id]`) with the circular Trust Score gauge, full findings breakdowns, and Gemma 4 AI chat assistant.
+- **Dedicated Credentials & Identity Detail Modals**:
+  - Integrated dedicated "Credentials" and "Identity" buttons on each candidate card with check counters and real-time status badges.
+  - Buttons are structured in a full-width vertical stack within each card to prevent horizontal badge overflow, text wrapping collisions, and clipping.
+  - Clicking either button utilizes `e.stopPropagation()` to prevent card navigation and opens an in-depth modal (`frontend/components/ui/Modal.jsx`) detailing all forensic checks:
+    - Overall vector status banner.
+    - Check title, check type (`employment_dates`, `cert_metadata`, `github_analysis`, `name_consistency`, `document_info`, etc.), status, and severity tag (`critical`, `high`, `medium`, `low`).
+    - Forensic explanations and bulleted cited evidence lists.
+    - Action button linking to the full candidate profile and trust score.
+- **Candidates Directory Defaults & In-Row Button Placement**:
+  - Set `viewMode` default to `'table'` (List View) so recruiters land on the clean tabular overview.
+  - Positioned the small interactive `{ Credentials, Identity }` buttons directly under each candidate's name and email horizontally inside the `Candidate` column:
+    - Candidate Cell: Avatar + Name + Email + horizontal `[ 📄 Credentials (badge) ] [ 🆔 Identity (badge) ]`.
+    - Removed the standalone `Verifications` column to keep the table compact, preventing horizontal scrolling and right-edge clipping.
+    - Clicking either small button opens the respective verification detail modal with `e.stopPropagation()`.
+    - Clicking anywhere else on the row navigates seamlessly to the full candidate dossier (`/dashboard/candidates/[id]`).
+  - Recruiters can still toggle freely between List View and Grid View (Cards).
+
+### H. Animated Verification Interstitials for Document Submissions
+- Built `<VerificationAnimationModal />` (`frontend/components/candidate/VerificationAnimationModal.jsx`) featuring animated bouncing vector icons, a gradient progress bar, and sequential "Checking..." to "Completed" status transitions (using "Checking..." while actively scanning and "Completed" upon completion).
+- **Resume & Digital Footprint Verification (Step 2)**:
+  - Triggers when the candidate completes Step 2 and clicks "Verify & Continue".
+  - Runs animated forensic checks across:
+    1. **Metadata**: Resume PDF creation date, author tags & revision history.
+    2. **Links**: Profile URLs reachability, domain DNS & HTTPS SSL validity.
+    3. **LinkedIn**: Career tenure timeline & role progression vs. resume.
+    4. **GitHub**: Repository creation dates, commit volume & account age.
+- **Comprehensive Multi-Vector Verification (Step 3)**:
+  - Triggers upon submitting certificates and government ID proofs.
+  - Concurrently audits all 6 vectors alongside the backend document upload pipeline:
+    1. **Certificates**: Professional certificate issuer signatures & issue dates.
+    2. **Personal Identifiers**: Government ID legal name match & document authenticity.
+    3. **Metadata**: Image EXIF, PDF byte streams & hex signatures.
+    4. **LinkedIn**: Career timeline cross-referencing.
+    5. **GitHub**: Codebase integrity & language alignment.
+    6. **Links**: Multi-vector deterministic trust score synthesis.
+  - Smoothly finishes onto Step 4 (Submission Confirmation) featuring a 6/6 checks completed summary card.
 
 ---
 
 ## 9. Immediate Next Steps / Roadmap for Contributors
 
 If you are picking up work on this project, consider these high-leverage enhancements:
-1. **Finish Firebase Auth integration**: Reconcile frontend signup/login calls with the ID-token endpoint, post the ID token from the email-link callback, parse it via a Pydantic body model, and initialize Firebase Admin once with valid credentials.
-2. **Configure Firebase**: Fill `frontend/.env.local` from `frontend/.env.firebase.example`; enable Email/Password and Email link sign-in; authorize local and production domains; set backend `FIREBASE_CREDENTIALS_PATH` and `FIREBASE_PROJECT_ID` for token verification and Firestore persistence.
+1. **Configure Firebase**: Fill `frontend/.env.local` from `frontend/.env.firebase.example`; enable Email/Password and Email link sign-in; authorize local and production domains; set backend `FIREBASE_CREDENTIALS_PATH` and/or `FIREBASE_PROJECT_ID` for token verification and Firestore persistence. These credentials were not available in this workspace, so real email delivery and production token verification still depend on Firebase setup.
 3. **Real Gemma 4 Connection**: Configure `GEMMA_API_KEY` and `GEMMA_API_BASE_URL` in `backend/.env` to connect to a live Ollama or Vertex AI instance instead of demo mock responses.
 4. **Real WebRTC / Camera Feed**: Enhance `frontend/app/dashboard/candidates/[id]/interview/page.jsx` with real face-mesh or face-api.js detection for multi-face detection.
 5. **PDF Report Export**: Wire up client-side PDF export (e.g., using `jspdf` or `html2canvas`) on `/dashboard/reports` and candidate profiles.

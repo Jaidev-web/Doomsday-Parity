@@ -33,7 +33,7 @@ export function ensureFirebaseReady() {
   getFirebaseAuth();
 }
 
-export async function sendEmailSignInLink({ email, role, name }) {
+export async function sendEmailSignInLink({ email, role, name, phone, company, title }) {
   if (typeof window === 'undefined') throw new Error('Email links can only be sent in a browser.');
   if (!['candidate', 'hr'].includes(role)) throw new Error('Invalid account type.');
 
@@ -44,7 +44,9 @@ export async function sendEmailSignInLink({ email, role, name }) {
   };
 
   await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-  window.localStorage.setItem(PENDING_LINK_KEY, JSON.stringify({ email, role, name: name || '' }));
+  window.localStorage.setItem(PENDING_LINK_KEY, JSON.stringify({
+    email, role, name: name || '', phone: phone || '', company: company || '', title: title || '',
+  }));
 }
 
 export function getPendingEmailLink() {
@@ -59,6 +61,11 @@ export function getPendingEmailLink() {
 export async function completeEmailSignIn(email, link, displayName = '') {
   const auth = getFirebaseAuth();
   if (!isSignInWithEmailLink(auth, link)) {
+    // Firebase consumes the action code once. Reuse an already signed-in user
+    // when retrying backend profile verification after a temporary API failure.
+    if (auth.currentUser?.email?.toLowerCase() === email.toLowerCase()) {
+      return { user: auth.currentUser };
+    }
     throw new Error('This is not a valid TrustHire sign-in link. Request a new link and try again.');
   }
   const credential = await signInWithEmailLink(auth, email, link);

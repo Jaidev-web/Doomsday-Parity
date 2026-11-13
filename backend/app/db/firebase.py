@@ -3,6 +3,22 @@ from firebase_admin import credentials, firestore
 from app.config import settings
 from typing import Dict, List, Optional, Any
 
+def get_firebase_admin_app(credentials_path: Optional[str] = None):
+    """Return the shared Firebase Admin app, initializing it when configured."""
+    try:
+        return firebase_admin.get_app()
+    except ValueError:
+        pass
+
+    options = {"projectId": settings.FIREBASE_PROJECT_ID} if settings.FIREBASE_PROJECT_ID else None
+    cred_path = credentials_path or settings.FIREBASE_CREDENTIALS_PATH
+    if cred_path:
+        cred = credentials.Certificate(cred_path)
+        return firebase_admin.initialize_app(cred, options=options)
+    if settings.FIREBASE_PROJECT_ID:
+        return firebase_admin.initialize_app(options=options)
+    raise RuntimeError("Configure FIREBASE_CREDENTIALS_PATH or FIREBASE_PROJECT_ID for Firebase Admin.")
+
 class FirebaseDB:
     def __init__(self):
         self.db = None
@@ -12,13 +28,8 @@ class FirebaseDB:
         if self.initialized:
             return
 
-        cred_path = credentials_path or settings.FIREBASE_CREDENTIALS_PATH
-        if not cred_path:
-            raise ValueError("FIREBASE_CREDENTIALS_PATH must be set")
-
-        cred = credentials.Certificate(cred_path)
-        firebase_admin.initialize_app(cred)
-        self.db = firestore.client()
+        app = get_firebase_admin_app(credentials_path)
+        self.db = firestore.client(app=app)
         self.initialized = True
 
     def _collection(self, collection: str):

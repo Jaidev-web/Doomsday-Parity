@@ -2,14 +2,10 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   Shield,
   ShieldCheck,
   Mail,
-  Lock,
-  Eye,
-  EyeOff,
   ArrowLeft,
   Building2,
   Briefcase,
@@ -22,15 +18,11 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { EmailLinkNotice } from '@/components/auth/EmailLinkNotice';
-import { ForgotPasswordFlow } from '@/components/auth/ForgotPasswordFlow';
 import { toast } from '@/components/ui/Toast';
-import { api } from '@/lib/api';
 import { ensureFirebaseReady, sendEmailSignInLink } from '@/lib/firebase';
 
 export default function HRAuthPage({ initialTab = 'login' }) {
-  const router = useRouter();
   const [activeTab, setActiveTab] = useState(initialTab); // login | signup | forgot | email-link
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Form states
@@ -39,9 +31,6 @@ export default function HRAuthPage({ initialTab = 'login' }) {
     email: '',
     company: '',
     role: '',
-    password: '',
-    confirmPassword: '',
-    requireEmailLink: true,
   });
 
   const [linkTarget, setLinkTarget] = useState('');
@@ -63,37 +52,22 @@ export default function HRAuthPage({ initialTab = 'login' }) {
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
 
-    if (!form.email || !form.password) {
-      toast.error('Please enter both your work email and password.');
+    if (!form.email) {
+      toast.error('Please enter your work email.');
       return;
     }
 
     setLoading(true);
-    toast.loading('Verifying recruiter credentials…', { id: 'hr-auth' });
+    toast.loading('Sending your secure sign-in link…', { id: 'hr-auth' });
 
     try {
-      if (form.requireEmailLink) ensureFirebaseReady();
-      const response = await api.auth.login({
-        email: form.email,
-        password: form.password,
-        role: 'hr',
-      });
+      ensureFirebaseReady();
+      await sendEmailSignInLink({ email: form.email, role: 'hr' });
+      setLinkTarget(form.email);
       setLoading(false);
       toast.dismiss('hr-auth');
-
-      if (response === null || response?.detail) {
-        throw new Error(response?.detail || 'Invalid email or password.');
-      }
-
-      if (form.requireEmailLink) {
-        await sendEmailSignInLink({ email: form.email, role: 'hr', name: response.name });
-        setLinkTarget(form.email);
-        toast.success('Credentials verified. Click the sign-in link sent to your email.');
-        setActiveTab('email-link');
-      } else {
-        toast.success('Welcome back! Launching HR Operations Hub…');
-        router.push('/dashboard');
-      }
+      toast.success('Click the sign-in link sent to your email to continue.');
+      setActiveTab('email-link');
     } catch (err) {
       setLoading(false);
       toast.dismiss('hr-auth');
@@ -104,43 +78,22 @@ export default function HRAuthPage({ initialTab = 'login' }) {
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
 
-    if (!form.name || !form.email || !form.company || !form.password) {
+    if (!form.name || !form.email || !form.company) {
       toast.error('Please fill in all required organization fields.');
       return;
     }
 
-    if (form.password.length < 8) {
-      toast.error('Password must contain at least 8 characters.');
-      return;
-    }
-
-    if (form.password !== form.confirmPassword) {
-      toast.error('Passwords do not match.');
-      return;
-    }
-
     setLoading(true);
-    toast.loading('Provisioning recruiter workspace…', { id: 'hr-reg' });
+    toast.loading('Sending your account sign-in link…', { id: 'hr-reg' });
 
     try {
       ensureFirebaseReady();
-      const response = await api.auth.signup({
-        name: form.name,
-        email: form.email,
-        password: form.password,
-        role: 'hr',
-        phone: form.company,
-      });
-      await sendEmailSignInLink({ email: form.email, role: 'hr', name: form.name });
+      await sendEmailSignInLink({ email: form.email, role: 'hr', name: form.name, company: form.company, title: form.role });
       setLinkTarget(form.email);
       setLoading(false);
       toast.dismiss('hr-reg');
 
-      if (response === null || response?.detail) {
-        throw new Error(response?.detail || 'Registration failed. User might already exist.');
-      }
-
-      toast.success(`Account created. Click the sign-in link sent to ${form.email}.`);
+      toast.success(`Click the sign-in link sent to ${form.email} to finish creating your account.`);
       setActiveTab('email-link');
     } catch (err) {
       setLoading(false);
@@ -152,7 +105,7 @@ export default function HRAuthPage({ initialTab = 'login' }) {
   const handleEmailLinkResend = async () => {
     setResendingLink(true);
     try {
-      await sendEmailSignInLink({ email: linkTarget || form.email, role: 'hr', name: form.name });
+      await sendEmailSignInLink({ email: linkTarget || form.email, role: 'hr', name: form.name, company: form.company, title: form.role });
       toast.success('A new sign-in link was sent.');
     } catch (err) {
       toast.error(err?.message || 'Could not resend the sign-in link.');
@@ -294,19 +247,13 @@ export default function HRAuthPage({ initialTab = 'login' }) {
               <span className="text-[11px] font-mono text-slate-400"></span>
             </div>
 
-            {/* Sub-views: email link, forgot password, or Main Tabs */}
+            {/* Email link confirmation or sign-in/sign-up form */}
             {activeTab === 'email-link' ? (
               <EmailLinkNotice
                 email={linkTarget || form.email}
                 onResend={handleEmailLinkResend}
                 isResending={resendingLink}
                 onBack={() => setActiveTab('login')}
-              />
-            ) : activeTab === 'forgot' ? (
-              <ForgotPasswordFlow
-                portalType="hr"
-                onCancel={() => setActiveTab('login')}
-                onSuccess={() => setActiveTab('login')}
               />
             ) : (
               <>
@@ -449,98 +396,6 @@ export default function HRAuthPage({ initialTab = 'login' }) {
                     </div>
                   </div>
 
-                  {/* Password */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label
-                        htmlFor="hr-password"
-                        className="block text-xs font-semibold text-slate-700 uppercase tracking-wider"
-                      >
-                        Password
-                      </label>
-                      {activeTab === 'login' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveTab('forgot');
-                            toast.info('Initiating recruiter password recovery');
-                          }}
-                          className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold transition-colors"
-                        >
-                          Forgot password?
-                        </button>
-                      )}
-                    </div>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        id="hr-password"
-                        name="password"
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        placeholder="••••••••"
-                        value={form.password}
-                        onChange={handleChange}
-                        className="w-full pl-10 pr-11 py-2.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Confirm Password (signup only) */}
-                  {activeTab === 'signup' && (
-                    <div>
-                      <label
-                        htmlFor="hr-confirm-password"
-                        className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5"
-                      >
-                        Confirm Password
-                      </label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                          id="hr-confirm-password"
-                          name="confirmPassword"
-                          type={showPassword ? 'text' : 'password'}
-                          required
-                          placeholder="Re-enter password"
-                          value={form.confirmPassword}
-                          onChange={handleChange}
-                          className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 2FA Option Checkbox */}
-                  {activeTab === 'login' && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <input
-                        id="require-email-link"
-                        type="checkbox"
-                        checked={form.requireEmailLink}
-                        onChange={(e) => {
-                          setForm({ ...form, requireEmailLink: e.target.checked });
-                          toast.info(
-                            e.target.checked
-                              ? 'Email-link verification enabled'
-                              : 'Email-link verification disabled'
-                          );
-                        }}
-                        className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <label htmlFor="require-email-link" className="text-xs text-slate-600 select-none">
-                          Require email-link verification on login
-                      </label>
-                    </div>
-                  )}
-
                   {/* Submit Button */}
                   <Button
                     type="submit"
@@ -569,7 +424,7 @@ export default function HRAuthPage({ initialTab = 'login' }) {
                         Authenticating Workspace…
                       </span>
                     ) : activeTab === 'login' ? (
-                      form.requireEmailLink ? 'Continue with email link' : 'Sign In to Dashboard'
+                      'Send sign-in link'
                     ) : (
                       'Register Team & Send Sign-in Link'
                     )}

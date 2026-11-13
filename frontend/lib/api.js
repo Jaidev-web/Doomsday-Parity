@@ -151,10 +151,10 @@ export const api = {
     },
   },
   auth: {
-    verifyToken: async (token, role) => {
+    verifyToken: async (token, role, profile = {}) => {
       return safeFetch('/api/auth/verify-token', {
         method: 'POST',
-        body: JSON.stringify({ token, role }),
+        body: JSON.stringify({ token, role, ...profile }),
         throwOnError: true,
       });
     },

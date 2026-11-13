@@ -6,9 +6,6 @@ import {
   Shield,
   User,
   Mail,
-  Lock,
-  Eye,
-  EyeOff,
   ArrowLeft,
   CheckCircle,
   FileText,
@@ -21,14 +18,11 @@ import {
 import { Button } from '@/components/ui/Button';
 import { Captcha } from '@/components/auth/Captcha';
 import { EmailLinkNotice } from '@/components/auth/EmailLinkNotice';
-import { ForgotPasswordFlow } from '@/components/auth/ForgotPasswordFlow';
 import { toast } from '@/components/ui/Toast';
-import { api } from '@/lib/api';
 import { ensureFirebaseReady, sendEmailSignInLink } from '@/lib/firebase';
 
 export default function CandidateAuthPage({ initialTab = 'login' }) {
   const [activeTab, setActiveTab] = useState(initialTab); // login | signup | forgot | email-link
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Form states
@@ -36,8 +30,6 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
     name: '',
     email: '',
     phone: '',
-    password: '',
-    confirmPassword: '',
   });
 
   // Captcha state
@@ -85,25 +77,15 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
     if (!validateCaptcha()) return;
 
     setLoading(true);
-    toast.loading('Authenticating candidate credentials…', { id: 'auth-toast' });
+    toast.loading('Sending your secure sign-in link…', { id: 'auth-toast' });
 
     try {
       ensureFirebaseReady();
-      const response = await api.auth.login({
-        email: form.email,
-        password: form.password,
-        role: 'candidate',
-      });
-
-      if (response === null || response?.detail) {
-        throw new Error(response?.detail || 'Invalid email or password.');
-      }
-
-      await sendEmailSignInLink({ email: form.email, role: 'candidate', name: response.name });
+      await sendEmailSignInLink({ email: form.email, role: 'candidate' });
       setLinkTarget(form.email);
       setLoading(false);
       toast.dismiss('auth-toast');
-      toast.success('Credentials verified. Click the sign-in link sent to your email.');
+      toast.success('Click the sign-in link sent to your email to continue.');
       setActiveTab('email-link');
     } catch (err) {
       setLoading(false);
@@ -115,41 +97,23 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
 
-    if (!form.name || !form.email || !form.password) {
+    if (!form.name || !form.email) {
       toast.error('Please complete all required fields.');
-      return;
-    }
-
-    if (form.password !== form.confirmPassword) {
-      toast.error('Passwords do not match. Please re-check.');
       return;
     }
 
     if (!validateCaptcha()) return;
 
     setLoading(true);
-    toast.loading('Creating candidate profile…', { id: 'signup-toast' });
+    toast.loading('Sending your account sign-in link…', { id: 'signup-toast' });
 
     try {
       ensureFirebaseReady();
-      const response = await api.auth.signup({
-        name: form.name,
-        email: form.email,
-        password: form.password,
-        role: 'candidate',
-        phone: form.phone,
-        position: 'Candidate',
-      });
-
-      if (response === null || response?.detail) {
-        throw new Error(response?.detail || 'Registration failed. User might already exist.');
-      }
-
-      await sendEmailSignInLink({ email: form.email, role: 'candidate', name: form.name });
+      await sendEmailSignInLink({ email: form.email, role: 'candidate', name: form.name, phone: form.phone });
       setLinkTarget(form.email);
       setLoading(false);
       toast.dismiss('signup-toast');
-      toast.success(`Account created. Click the sign-in link sent to ${form.email}.`);
+      toast.success(`Click the sign-in link sent to ${form.email} to finish creating your account.`);
       setActiveTab('email-link');
     } catch (err) {
       setLoading(false);
@@ -165,6 +129,7 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
         email: linkTarget || form.email,
         role: 'candidate',
         name: form.name,
+        phone: form.phone,
       });
       toast.success('A new sign-in link was sent.');
     } catch (err) {
@@ -302,19 +267,13 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
               <span className="text-[11px] font-mono text-slate-400">v2.0 • Secure</span>
             </div>
 
-            {/* Sub-Views: email link, forgot password, or main tabs */}
+            {/* Email link confirmation or sign-in/sign-up form */}
             {activeTab === 'email-link' ? (
               <EmailLinkNotice
                 email={linkTarget || form.email}
                 onResend={handleEmailLinkResend}
                 isResending={resendingLink}
                 onBack={() => setActiveTab('login')}
-              />
-            ) : activeTab === 'forgot' ? (
-              <ForgotPasswordFlow
-                portalType="candidate"
-                onCancel={() => setActiveTab('login')}
-                onSuccess={() => setActiveTab('login')}
               />
             ) : (
               <>
@@ -432,75 +391,6 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
                     </div>
                   )}
 
-                  {/* Password */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label
-                        htmlFor="cand-password"
-                        className="block text-xs font-semibold text-slate-700 uppercase tracking-wider"
-                      >
-                        Password
-                      </label>
-                      {activeTab === 'login' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveTab('forgot');
-                            toast.info('Initiating password recovery');
-                          }}
-                          className="text-xs text-emerald-600 hover:text-emerald-800 font-semibold transition-colors"
-                        >
-                          Forgot password?
-                        </button>
-                      )}
-                    </div>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        id="cand-password"
-                        name="password"
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        placeholder="••••••••"
-                        value={form.password}
-                        onChange={handleChange}
-                        className="w-full pl-10 pr-11 py-2.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Confirm password (signup only) */}
-                  {activeTab === 'signup' && (
-                    <div>
-                      <label
-                        htmlFor="cand-confirm-pwd"
-                        className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5"
-                      >
-                        Confirm Password
-                      </label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                          id="cand-confirm-pwd"
-                          name="confirmPassword"
-                          type={showPassword ? 'text' : 'password'}
-                          required
-                          placeholder="Re-enter password"
-                          value={form.confirmPassword}
-                          onChange={handleChange}
-                          className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
-                        />
-                      </div>
-                    </div>
-                  )}
-
                   {/* Anti-Bot Captcha Section (Mandatory for Candidate) */}
                   <div className="pt-2 border-t border-slate-100">
                     <Captcha
@@ -542,7 +432,7 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
                         Verifying & Submitting…
                       </span>
                     ) : activeTab === 'login' ? (
-                      'Sign In to Candidate Portal'
+                      'Send Sign-in Link'
                     ) : (
                       'Create Account & Send Sign-in Link'
                     )}
