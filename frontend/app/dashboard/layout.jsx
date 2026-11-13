@@ -4,8 +4,6 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Users,
-  FileCheck,
-  Fingerprint,
   Video,
   BarChart3,
   Settings,
@@ -21,8 +19,6 @@ export default function DashboardLayout({ children }) {
   const navItems = [
     { label: 'Overview', icon: LayoutDashboard, href: '/dashboard' },
     { label: 'Candidates', icon: Users, href: '/dashboard/candidates' },
-    { label: 'Credentials', icon: FileCheck, href: '/dashboard/credentials' },
-    { label: 'Identity', icon: Fingerprint, href: '/dashboard/identity' },
     { label: 'Interviews', icon: Video, href: '/dashboard/interviews' },
     { label: 'Reports', icon: BarChart3, href: '/dashboard/reports' },
     { label: 'Settings', icon: Settings, href: '/dashboard/settings' },

@@ -1,22 +1,41 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Search, Filter, LayoutGrid, List, Shield, ArrowUpDown, ChevronRight } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import {
+  Search,
+  Filter,
+  LayoutGrid,
+  List,
+  Shield,
+  ArrowUpDown,
+  ChevronRight,
+  FileCheck,
+  Fingerprint,
+  Video,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  ExternalLink,
+} from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
+import { Modal } from '@/components/ui/Modal';
 import { CandidateCard } from '@/components/candidate/CandidateCard';
 import { formatDate, getTrustColor } from '@/lib/utils';
 import { api } from '@/lib/api';
-import { DEMO_CANDIDATES } from '@/lib/constants';
+import { DEMO_CANDIDATES, DEMO_VERIFICATIONS } from '@/lib/constants';
 
 export default function CandidatesListPage() {
+  const router = useRouter();
   const [candidates, setCandidates] = useState(DEMO_CANDIDATES);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [viewMode, setViewMode] = useState('table'); // 'table' or 'grid'
+  const [viewMode, setViewMode] = useState('table'); // Default to list view as requested
+  const [tableModal, setTableModal] = useState({ isOpen: false, type: null, candidate: null });
 
   useEffect(() => {
     async function fetchCandidates() {
@@ -45,6 +64,22 @@ export default function CandidatesListPage() {
       return c.trust_score < 50 || c.overall_status === 'critical_review' || c.overall_status === 'critical';
     return true;
   });
+
+  const getStatusIcon = (status) => {
+    if (status === 'passed' || status === 'verified' || status === 'clean') {
+      return <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />;
+    }
+    if (status === 'warning' || status === 'needs_review' || status === 'discrepancy') {
+      return <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />;
+    }
+    return <XCircle className="w-4 h-4 text-rose-500 shrink-0" />;
+  };
+
+  const activeChecks = tableModal.candidate
+    ? (DEMO_VERIFICATIONS[tableModal.candidate.id] || []).filter(
+        (v) => v.module === tableModal.type
+      )
+    : [];
 
   return (
     <div className="space-y-6">
@@ -98,15 +133,15 @@ export default function CandidatesListPage() {
           <div className="flex items-center border border-slate-200 rounded-lg p-0.5 bg-slate-50">
             <button
               onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded ${viewMode === 'table' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-400'}`}
-              title="Table View"
+              className={`p-1.5 rounded ${viewMode === 'table' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-400 hover:text-slate-700'}`}
+              title="List View"
             >
               <List className="w-4 h-4" />
             </button>
             <button
               onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-400'}`}
-              title="Grid View"
+              className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-400 hover:text-slate-700'}`}
+              title="Grid View (Cards)"
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
@@ -134,8 +169,6 @@ export default function CandidatesListPage() {
                 <TableHead>Candidate</TableHead>
                 <TableHead>Position</TableHead>
                 <TableHead>Trust Score</TableHead>
-                <TableHead>Credentials</TableHead>
-                <TableHead>Identity</TableHead>
                 <TableHead>Interview</TableHead>
                 <TableHead>Last Updated</TableHead>
                 <TableHead className="text-right">Action</TableHead>
@@ -145,18 +178,58 @@ export default function CandidatesListPage() {
               {filtered.map((candidate) => {
                 const trustColor = getTrustColor(candidate.trust_score);
                 return (
-                  <TableRow key={candidate.id}>
+                  <TableRow
+                    key={candidate.id}
+                    onClick={() => router.push(`/dashboard/candidates/${candidate.id}`)}
+                    className="cursor-pointer hover:bg-slate-50 transition-colors group"
+                  >
                     <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar name={candidate.name} size="sm" />
-                        <div>
-                          <Link
-                            href={`/dashboard/candidates/${candidate.id}`}
-                            className="text-sm font-semibold text-slate-900 hover:text-indigo-600"
-                          >
-                            {candidate.name}
-                          </Link>
-                          <span className="block text-[11px] text-slate-400">{candidate.email}</span>
+                      <div className="flex items-start gap-3 py-1">
+                        <Avatar name={candidate.name} size="sm" className="mt-0.5 shrink-0" />
+                        <div className="space-y-1.5">
+                          <div>
+                            <span className="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                              {candidate.name}
+                            </span>
+                            <span className="block text-[11px] text-slate-400">{candidate.email}</span>
+                          </div>
+
+                          {/* Small horizontal buttons for Credentials and Identity under name */}
+                          <div className="flex items-center gap-2 pt-0.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTableModal({ isOpen: true, type: 'credential', candidate });
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-slate-200 bg-white hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 text-slate-700 text-[11px] font-medium transition-all shadow-2xs group/btn"
+                              title="Click to view credentials details"
+                            >
+                              <FileCheck className="w-3 h-3 text-indigo-600 shrink-0" />
+                              <span>Credentials</span>
+                              <Badge
+                                status={candidate.credential_status || 'pending'}
+                                className="text-[9px] px-1.5 py-0 leading-tight"
+                              />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTableModal({ isOpen: true, type: 'identity', candidate });
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-slate-200 bg-white hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 text-slate-700 text-[11px] font-medium transition-all shadow-2xs group/btn"
+                              title="Click to view identity details"
+                            >
+                              <Fingerprint className="w-3 h-3 text-indigo-600 shrink-0" />
+                              <span>Identity</span>
+                              <Badge
+                                status={candidate.identity_status || 'pending'}
+                                className="text-[9px] px-1.5 py-0 leading-tight"
+                              />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </TableCell>
@@ -174,12 +247,6 @@ export default function CandidatesListPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge status={candidate.credential_status || 'pending'} />
-                    </TableCell>
-                    <TableCell>
-                      <Badge status={candidate.identity_status || 'pending'} />
-                    </TableCell>
-                    <TableCell>
                       <Badge status={candidate.interview_status || 'pending'} />
                     </TableCell>
                     <TableCell className="text-xs text-slate-400">
@@ -187,18 +254,26 @@ export default function CandidatesListPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <Link
-                          href={`/dashboard/candidates/${candidate.id}/interview`}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/dashboard/candidates/${candidate.id}/interview`);
+                          }}
                           className="text-xs text-slate-500 hover:text-slate-800 px-2 py-1 rounded hover:bg-slate-100"
                         >
                           Interview
-                        </Link>
-                        <Link
-                          href={`/dashboard/candidates/${candidate.id}`}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/dashboard/candidates/${candidate.id}`);
+                          }}
                           className="text-xs font-semibold text-indigo-600 hover:text-indigo-900 px-3 py-1.5 rounded-lg hover:bg-indigo-50"
                         >
                           Inspect →
-                        </Link>
+                        </button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -207,6 +282,126 @@ export default function CandidatesListPage() {
             </TableBody>
           </Table>
         </Card>
+      )}
+
+      {/* Table view details modal */}
+      {tableModal.candidate && (
+        <Modal
+          isOpen={tableModal.isOpen}
+          onClose={() => setTableModal({ isOpen: false, type: null, candidate: null })}
+          title={`${tableModal.candidate.name} — ${
+            tableModal.type === 'credential' ? 'Credentials Verification' : 'Identity Validation'
+          }`}
+          description={
+            tableModal.type === 'credential'
+              ? 'Tamper-evident verification of diplomas, employment timelines, and certificate metadata.'
+              : 'Cross-platform identity reconciliation, government ID verification, and biometric consistency.'
+          }
+          maxWidth="max-w-2xl"
+        >
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                  Overall {tableModal.type === 'credential' ? 'Credential' : 'Identity'} Status
+                </span>
+                <p className="text-sm font-bold text-slate-900 mt-0.5 capitalize">
+                  {tableModal.candidate[`${tableModal.type}_status`] || 'Pending'}
+                </p>
+              </div>
+              <Badge
+                status={tableModal.candidate[`${tableModal.type}_status`] || 'pending'}
+                className="text-xs px-3 py-1"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Verification Checks ({activeChecks.length})
+              </h4>
+              {activeChecks.length === 0 ? (
+                <p className="text-xs text-slate-500 italic p-4 text-center bg-slate-50 rounded-xl">
+                  No discrepancies recorded. All baseline checks verified.
+                </p>
+              ) : (
+                activeChecks.map((check) => (
+                  <div
+                    key={check.id}
+                    className="p-4 rounded-xl border border-slate-200 bg-white space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        {getStatusIcon(check.status)}
+                        <div>
+                          <h5 className="text-sm font-semibold text-slate-900">{check.title}</h5>
+                          <span className="text-[11px] text-slate-400 capitalize font-medium">
+                            Check type: {check.check_type.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Badge status={check.status} className="text-[10px]" />
+                        {check.severity && (
+                          <span
+                            className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
+                              check.severity === 'critical'
+                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                : check.severity === 'high'
+                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                : 'bg-slate-100 text-slate-600 border-slate-200'
+                            }`}
+                          >
+                            {check.severity}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed pl-6.5">{check.explanation}</p>
+                    {check.evidence && check.evidence.length > 0 && (
+                      <div className="pl-6.5 pt-1">
+                        <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 text-[11px] space-y-1">
+                          <span className="font-semibold text-slate-700 block text-[10px] uppercase tracking-wider">
+                            Cited Evidence:
+                          </span>
+                          <ul className="list-disc list-inside space-y-0.5 text-slate-600 font-mono text-[10px]">
+                            {check.evidence.map((ev, idx) => (
+                              <li key={idx} className="break-all">
+                                {ev}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTableModal({ isOpen: false, type: null, candidate: null })}
+              >
+                Close
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  const id = tableModal.candidate.id;
+                  setTableModal({ isOpen: false, type: null, candidate: null });
+                  router.push(`/dashboard/candidates/${id}`);
+                }}
+                className="flex items-center gap-1.5"
+              >
+                <span>View Full Candidate Profile</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
