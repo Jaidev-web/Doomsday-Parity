@@ -11,6 +11,7 @@
 2. **Identity Verification**: Multi-source legal name matching and zero-knowledge simulated government registry validation (PAN, Passport).
 3. **Interview Integrity Monitoring**: Client-side proctoring telemetry tracking tab switches, window blur events, and correlated clipboard paste activity.
 4. **Deterministic Trust Scoring**: A rule-based, explainable 0–100 score (Credentials 40%, Identity 35%, Interview 25%) paired with **Gemma 4 AI** for plain-English recruiter summaries and risk analysis.
+5. **Dual-Portal Card Authentication System**: Role-segregated entry points for Candidates and HR/Recruiters, backed by anti-bot visual CAPTCHAs, 6-digit OTP verification, password reset workflows, and reactive hot toast telemetry.
 
 ---
 
@@ -18,7 +19,8 @@
 
 | Layer | Technologies Used | Key Architectural Decision |
 |---|---|---|
-| **Frontend** | Next.js 16 (App Router), React 19, Tailwind CSS v4, Lucide React | Single-page and dashboard components built in plain JavaScript (`.jsx`) for rapid iteration. Uses Tailwind CSS compiled via `@tailwindcss/cli` into `app/tailwind.css`. |
+| **Frontend** | Next.js 16 (App Router), React 19, Tailwind CSS v4, Lucide React | Single-page and dashboard components built in `.jsx` for rapid iteration. Uses Tailwind CSS compiled into `app/tailwind.css`. Global `<Toaster />` mounted in root `layout.js` for reactive event notifications. |
+| **Authentication & Security** | Canvas API, SpeechSynthesis, Pub/Sub Toast Event Bus | Client-side dual authentication suite (Candidate & HR). Implements canvas distortion security CAPTCHAs with audio synthesis for candidates, 6-digit auto-advancing OTP boxes with resend countdowns, and 3-step password recovery. |
 | **Backend** | Python 3.13, FastAPI, Pydantic v2, Uvicorn, httpx | Modular REST API with route segregation. In-memory dictionary database (`MockDB`) with automatic demo seeding on startup — no external DB or Firebase required to run. |
 | **AI Layer** | Gemma 4 integration via `AIService` | Supports live Gemma endpoints with automatic fallback to realistic `[Demo Mode]` responses if no API key is provided. |
 | **Documents** | PyPDF2, python-docx, Pillow | Extracts text and PDF metadata (`/Author`, `/CreationDate`) for forensic tamper checks. |
@@ -65,10 +67,17 @@ c:\Doomsday-Parity\
 │
 ├── frontend/                             # Next.js 16 Web Application
 │   ├── app/                              # Next.js App Router
-│   │   ├── layout.js                     # Root layout importing tailwind.css
-│   │   ├── page.js                       # Public landing page (Portal selector, Features, AI)
+│   │   ├── layout.js                     # Root layout importing tailwind.css & mounting <Toaster />
+│   │   ├── page.js                       # Public landing page (Hero, Features, HowItWorks, AI)
 │   │   ├── globals.css                   # Custom theme variables
 │   │   ├── tailwind.css                  # Compiled Tailwind utility classes
+│   │   ├── login/                        # Dual Portal Auth Gateway
+│   │   │   ├── page.jsx                  # Access portal selector (Candidate vs HR)
+│   │   │   ├── candidate/page.jsx        # Candidate Sign In / Sign Up, Captcha, OTP & Reset
+│   │   │   └── hr/page.jsx               # HR Recruiter Sign In / Sign Up, 2FA OTP & Reset
+│   │   ├── signup/                       # Direct Registration Entry Points
+│   │   │   ├── candidate/page.jsx        # Dedicated candidate signup wrapper
+│   │   │   └── hr/page.jsx               # Dedicated HR team registration wrapper
 │   │   ├── candidate/                    # SECTION 1: CANDIDATE ONLY PORTAL
 │   │   │   ├── layout.jsx                # Candidate portal header & navigation
 │   │   │   ├── page.jsx                  # Candidate portal home & action cards
@@ -90,7 +99,12 @@ c:\Doomsday-Parity\
 │   │       ├── reports/page.jsx          # Cohort risk distribution analytics
 │   │       └── settings/page.jsx         # Demo mode & Gemma model settings
 │   ├── components/
-│   │   ├── ui/                           # Primitives: Button, Card, Badge, Modal, etc.
+│   │   ├── auth/                         # Authentication & Security Components
+│   │   │   ├── Captcha.jsx               # Canvas anti-bot challenge with audio readout
+│   │   │   ├── OtpVerification.jsx       # 6-digit individual box inputs with countdown
+│   │   │   └── ForgotPasswordFlow.jsx    # 3-step recovery flow (Email -> OTP -> New Password)
+│   │   ├── ui/                           # Primitives: Button, Card, Badge, Modal, Input, etc.
+│   │   │   └── Toast.jsx                 # Hot toast notification system & <Toaster />
 │   │   ├── candidate/                    # TrustGauge, FindingCard, AIChat, CandidateCard
 │   │   ├── dashboard/                    # StatCard, ActivityFeed, TrustDistribution
 │   │   └── landing/                      # Navbar, Hero, Features, HowItWorks, Footer
@@ -108,7 +122,43 @@ c:\Doomsday-Parity\
 
 ---
 
-## 4. Demo Candidates & Scenario Data
+## 4. Authentication Architecture & Security Details
+
+TrustHire enforces strict role separation from entry through card-based UI workflows:
+
+1. **Dual Portal Selector (`/login`)**:
+   - Gateway card allowing users to route directly into Candidate or Recruiter workspaces.
+
+2. **Candidate Portal Auth (`/login/candidate`, `/signup/candidate`)**:
+   - **Color Theme**: Emerald (`#059669` / `bg-emerald-600`).
+   - **Anti-Bot Security Challenge (`<Captcha />`)**: Mandatory HTML5 Canvas distorted alphanumeric verification with noise dots, bezier line interference, rotation, and Web Speech API audio synthesis readout.
+   - **Demo Pre-fill**: Quick button to populate Sarah Chen (`cand-sarah-001`, Score: 87.0).
+   - **Verification**: Dispatches 6-digit OTP to registered candidate email before granting access to `/candidate`.
+
+3. **HR Recruiter Auth (`/login/hr`, `/signup/hr`)**:
+   - **Color Theme**: Indigo / Slate (`#4f46e5` / `bg-indigo-600`).
+   - **Workspace Registration**: Corporate email validation, organization name, and talent role.
+   - **Enterprise Security**: Built-in Two-Factor Authentication (OTP) toggle + simulated Enterprise SSO (Google Workspace, Azure AD).
+   - **Demo Account**: Pre-fills `recruiter@trusthire.ai` for instant access to candidate dossiers and Gemma 4 AI tools.
+
+4. **6-Digit One-Time Password (`<OtpVerification />`)**:
+   - Individual input boxes with auto-advance, backspace navigation, and clipboard paste listener.
+   - 45-second resend countdown timer with instant toast feedback.
+   - Acceptance for both expected demo codes and manual bypass values.
+
+5. **Forgot Password Flow (`<ForgotPasswordFlow />`)**:
+   - Integrated directly within the card UI:
+     - Step 1: Input registered email address.
+     - Step 2: Validate 6-digit OTP dispatched to email.
+     - Step 3: Enter and confirm new password (minimum 8 characters) with show/hide password toggles.
+
+6. **Hot Toast Notification System (`<Toast />`, `<Toaster />`)**:
+   - Pub/sub architecture mounted in `app/layout.js`.
+   - Fires toasts for every user interaction: tab switching, captcha refresh/readout, captcha validation error, OTP delivery, resend triggers, clipboard paste, login success, SSO launch, and demo pre-fill.
+
+---
+
+## 5. Demo Candidates & Scenario Data
 
 The database comes pre-seeded on backend startup (`app/demo/seed.py`) with three distinct candidate profiles designed for hackathon judging:
 
@@ -128,7 +178,7 @@ The database comes pre-seeded on backend startup (`app/demo/seed.py`) with three
 
 ---
 
-## 5. How to Run the Project Locally
+## 6. How to Run the Project Locally
 
 ### Terminal 1: Backend (FastAPI)
 ```bash
@@ -146,21 +196,32 @@ pnpm run dev
 ```
 - App runs at: `http://localhost:3000`
 - Landing page: `http://localhost:3000`
+- Dual Portal Selector: `http://localhost:3000/login`
+- Candidate Login & Sign Up: `http://localhost:3000/login/candidate`
+- HR Recruiter Login & Sign Up: `http://localhost:3000/login/hr`
 - Recruiter Dashboard: `http://localhost:3000/dashboard`
 - Candidate Profile: `http://localhost:3000/dashboard/candidates/cand-marcus-002`
 - Live Interview Monitor: `http://localhost:3000/dashboard/candidates/cand-marcus-002/interview`
 
 ---
 
-## 6. Testing & Verification Status
+## 7. Testing & Verification Status
 
-- **Frontend Compilation**: Verified with `pnpm run build` using `@tailwindcss/cli`. All 12 routes compile statically/dynamically with 0 errors.
+- **Frontend Compilation**: Verified with `next build` (Next.js 16.4.6 with Turbopack). All **21 routes** compile statically/dynamically with **0 errors**:
+  - `/`
+  - `/login`
+  - `/login/candidate`
+  - `/login/hr`
+  - `/signup/candidate`
+  - `/signup/hr`
+  - `/candidate` (plus `/apply`, `/interview`, `/status`)
+  - `/dashboard` (plus `/candidates`, `/candidates/[id]`, `/candidates/[id]/interview`, `/credentials`, `/identity`, `/interviews`, `/reports`, `/settings`)
 - **Backend Test Suite**: Tested with `python run_full_verification.py`. All 11 test assertions passed (CRUD, calculations, AI fallbacks, interview telemetry, and document parsing).
-- **CSS Styling**: Generated in `frontend/app/tailwind.css` and imported by `layout.js`.
+- **CSS Styling**: Built with Tailwind CSS v4 into `frontend/app/tailwind.css` and imported by `layout.js`.
 
 ---
 
-## 7. Immediate Next Steps / Roadmap for Contributors
+## 8. Immediate Next Steps / Roadmap for Contributors
 
 If you are picking up work on this project, consider these high-leverage enhancements:
 1. **Real Gemma 4 Connection**: Configure `GEMMA_API_KEY` and `GEMMA_API_BASE_URL` in `backend/.env` to connect to a live Ollama or Vertex AI instance instead of demo mock responses.
