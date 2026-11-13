@@ -47,14 +47,6 @@ export default function LandingPage() {
                     </div>
                   ))}
                 </div>
-
-                <div className="mt-10">
-                  <Link href="/dashboard/candidates/cand-marcus-002">
-                    <Button size="lg" className="bg-white text-indigo-900 hover:bg-indigo-50 font-bold border-0" icon={ArrowRight}>
-                      View Marcus Rivera Dossier
-                    </Button>
-                  </Link>
-                </div>
               </div>
 
               {/* Sample AI Callout Card */}
