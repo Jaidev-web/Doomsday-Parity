@@ -15,6 +15,7 @@ export default function CandidateLayout({ children }) {
   ];
 
   return (
+    <RoleSessionGuard role="candidate">
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       {/* Candidate Top Header */}
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
@@ -64,6 +65,9 @@ export default function CandidateLayout({ children }) {
                 </Link>
               );
             })}
+            <button type="button" onClick={() => signOutRoleSession('candidate')} className="ml-2 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900">
+              Sign out
+            </button>
           </nav>
         </div>
       </header>
@@ -76,5 +80,6 @@ export default function CandidateLayout({ children }) {
         <p>TrustHire Candidate Environment • Secure & Privacy-Conscious Verification</p>
       </footer>
     </div>
+    </RoleSessionGuard>
   );
 }

@@ -4,6 +4,11 @@ from typing import Optional
 
 class Settings(BaseSettings):
     DEMO_MODE: bool = True
+    DEMO_AUTH_ENABLED: bool = False
+    DEMO_CANDIDATE_EMAIL: str = ""
+    DEMO_CANDIDATE_PASSWORD: str = ""
+    DEMO_HR_EMAIL: str = ""
+    DEMO_HR_PASSWORD: str = ""
     AI_DEMO_MODE: Optional[bool] = None
     GEMMA_API_KEY: Optional[str] = None
     GEMMA_API_BASE_URL: str = "http://localhost:11434/api"

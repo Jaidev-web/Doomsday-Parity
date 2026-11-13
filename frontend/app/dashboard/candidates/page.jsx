@@ -2,21 +2,19 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { toast } from '@/components/ui/Toast';
 import {
   Search,
   Filter,
   LayoutGrid,
   List,
-  Shield,
-  ArrowUpDown,
-  ChevronRight,
   FileCheck,
   Fingerprint,
-  Video,
   CheckCircle2,
   AlertTriangle,
   XCircle,
   ExternalLink,
+  Copy,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -268,6 +266,20 @@ export default function CandidatesListPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const link = `${window.location.origin}/login/candidate?interviewId=${candidate.id}`;
+                            navigator.clipboard.writeText(link);
+                            toast.success('Interview link copied to clipboard!');
+                          }}
+                          className="text-xs text-slate-500 hover:text-indigo-600 px-2 py-1 rounded hover:bg-indigo-50 flex items-center gap-1"
+                          title="Copy interview link"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          Link
+                        </button>
                         <button
                           type="button"
                           onClick={(e) => {

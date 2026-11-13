@@ -25,3 +25,8 @@ class FirebaseTokenVerifyRequest(BaseModel):
     phone: Optional[str] = None
     company: Optional[str] = None
     title: Optional[str] = None
+
+class DemoLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+    role: Literal["candidate", "hr"]

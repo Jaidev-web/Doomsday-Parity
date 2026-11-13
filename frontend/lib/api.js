@@ -151,6 +151,13 @@ export const api = {
     },
   },
   auth: {
+    demoLogin: async (email, password, role) => {
+      return safeFetch('/api/auth/demo-login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, role }),
+        throwOnError: true,
+      });
+    },
     verifyToken: async (token, role, profile = {}) => {
       return safeFetch('/api/auth/verify-token', {
         method: 'POST',

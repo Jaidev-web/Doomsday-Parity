@@ -40,6 +40,7 @@ export default function DashboardLayout({ children }) {
   );
 
   return (
+    <RoleSessionGuard role="hr">
     <div className="min-h-screen flex bg-slate-50 text-slate-900">
       {/* Collapsible Sidebar */}
       <aside
@@ -241,6 +242,9 @@ export default function DashboardLayout({ children }) {
                 <span className="block text-[10px] text-slate-500 font-medium leading-tight">Reiner Hemming</span>
               </div>
             </div>
+            <button type="button" onClick={() => signOutRoleSession('hr')} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900">
+              Sign out
+            </button>
           </div>
         </header>
 
@@ -253,5 +257,6 @@ export default function DashboardLayout({ children }) {
         </main>
       </div>
     </div>
+    </RoleSessionGuard>
   );
 }
