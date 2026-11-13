@@ -89,7 +89,6 @@ c:\Doomsday-Parity\
 │   │       ├── page.jsx                  # Operations Hub overview & statistics
 │   │       ├── candidates/
 │   │       │   ├── page.jsx              # Candidate list (Search, Filter, Table/Grid)
-│   │       │   ├── new/page.jsx          # Add candidate manually
 │   │       │   └── [id]/
 │   │       │       ├── page.jsx          # Candidate profile (Gauge, Tabs, Gemma AI Chat)
 │   │       │       └── interview/page.jsx# Live proctoring monitor & event logger
@@ -221,7 +220,25 @@ pnpm run dev
 
 ---
 
-## 8. Immediate Next Steps / Roadmap for Contributors
+## 8. Recent Architectural Changes & Updates (Changelog)
+
+### A. Candidate-Driven Onboarding Enforcement
+- **HR Cannot Add Candidates**: Per the hiring integrity problem statement, HR recruiters must not manually create candidate profiles. Candidates must self-register, submit their resume/documents, and complete their verification dossier through the **Candidate Portal** (`/candidate/apply`).
+- **Removed HR Buttons & Routes**:
+  - Removed `+ New Candidate` button from the HR sidebar in `frontend/app/dashboard/layout.jsx`.
+  - Removed `+ Add Candidate` button from the Operations Hub in `frontend/app/dashboard/page.jsx`.
+  - Removed `+ Add Candidate` button from the Candidates Directory in `frontend/app/dashboard/candidates/page.jsx`.
+  - Deleted the obsolete manual creation route directory `frontend/app/dashboard/candidates/new/`.
+
+### B. Cleaned HR Top Navigation
+- Removed the redundant `Public Site` button and divider from the HR top bar in `frontend/app/dashboard/layout.jsx`. Clicking the TrustHire logo in the upper-left of the sidebar navigates directly to the Home page (`/`).
+
+### C. Tailwind CSS v4 & Next.js 16 Turbopack Fix
+- Compiled `@tailwindcss/cli` output into `frontend/app/tailwind.css` and linked it directly in `frontend/app/layout.js`, ensuring all utility classes, colors, gradients, and responsive layouts render properly without Turbopack subprocess conflicts.
+
+---
+
+## 9. Immediate Next Steps / Roadmap for Contributors
 
 If you are picking up work on this project, consider these high-leverage enhancements:
 1. **Real Gemma 4 Connection**: Configure `GEMMA_API_KEY` and `GEMMA_API_BASE_URL` in `backend/.env` to connect to a live Ollama or Vertex AI instance instead of demo mock responses.
