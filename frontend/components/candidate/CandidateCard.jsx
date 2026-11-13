@@ -75,12 +75,23 @@ export function CandidateCard({ candidate }) {
               </div>
             </div>
 
-            {/* Compact Trust Score Badge */}
-            <div className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 group-hover:border-indigo-200 transition-colors">
-              <Shield className="w-4 h-4 shrink-0" style={{ color: trustColor }} />
-              <div className="flex items-baseline gap-0.5">
-                <span className="text-sm font-extrabold text-slate-900">{Math.round(candidate.trust_score)}</span>
-                <span className="text-[10px] text-slate-400 font-semibold">/100</span>
+            {/* Compact Trust Score Badge with horizontal bar */}
+            <div className="shrink-0 flex flex-col items-end gap-1">
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 group-hover:border-indigo-200 transition-colors">
+                <Shield className="w-4 h-4 shrink-0" style={{ color: trustColor }} />
+                <div className="flex items-baseline gap-0.5">
+                  <span className="text-sm font-extrabold text-slate-900">{Math.round(candidate.trust_score)}</span>
+                  <span className="text-[10px] text-slate-400 font-semibold">/100</span>
+                </div>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: `${Math.min(100, Math.max(0, candidate.trust_score))}%`,
+                    backgroundColor: trustColor,
+                  }}
+                />
               </div>
             </div>
           </div>

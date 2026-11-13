@@ -289,6 +289,14 @@ pnpm run dev
     6. **Links**: Multi-vector deterministic trust score synthesis.
   - Smoothly finishes onto Step 4 (Submission Confirmation) featuring a 6/6 checks completed summary card.
 
+### H. UI Polish: Header Cleanliness & Horizontal Trust Score Bar
+- **Removed "MVP" & "Acme Enterprise"**:
+  - Removed the `"MVP"` badge next to the TrustHire logo in the dashboard sidebar (`frontend/app/dashboard/layout.jsx`).
+  - Removed `"Acme Enterprise"` from the recruiter profile badge in the dashboard top navigation bar (`frontend/app/dashboard/layout.jsx`), keeping only the clean `"Lead Recruiter"` designation.
+- **Added Horizontal Trust Score Indicator Bars**:
+  - In the Candidates Directory table list view (`frontend/app/dashboard/candidates/page.jsx`), added a sleek horizontal progress bar under the trust score numbers (`87/100`, `42/100`, `64/100`), dynamically filled to the candidate's exact score and colored according to risk levels (green for high trust, red for critical review, amber for needs review).
+  - Also added the matching horizontal score bar to candidate cards (`frontend/components/candidate/CandidateCard.jsx`) for visual consistency across view modes.
+
 ---
 
 ## 9. Immediate Next Steps / Roadmap for Contributors
