@@ -48,8 +48,9 @@ export default function CandidateInterviewPage() {
   const [gazeAssessment, setGazeAssessment] = useState({ status: 'loading' });
 
   // ── Permission & Session Phase ────────────────────────────────────────────
-  const [phase, setPhase] = useState('validating'); // validating|consent|requesting|active|denied|submitted|invalid
+  const [phase, setPhase] = useState('entry'); // entry|validating|consent|requesting|active|denied|submitted|invalid
   const [permError, setPermError] = useState('');
+  const [invitationInput, setInvitationInput] = useState('');
 
   // ── Media ──────────────────────────────────────────────────────────────────
   const [mediaStream, setMediaStream] = useState(null);
@@ -73,6 +74,7 @@ export default function CandidateInterviewPage() {
   const [awaitingNextQuestion, setAwaitingNextQuestion] = useState(false);
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [sessionEndedByRecruiter, setSessionEndedByRecruiter] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const recordingQuestionRef = useRef(null);
@@ -80,42 +82,87 @@ export default function CandidateInterviewPage() {
   const chunksRef = useRef([]);
   const recTimerRef = useRef(null);
   const sessionTimerRef = useRef(null);
+  const sessionClosedRef = useRef(false);
   const typingBurstRef = useRef({ count: 0, startedAt: null, timer: null });
   const handleGazeStatus = useCallback((assessment) => setGazeAssessment(assessment), []);
 
-  useEffect(() => {
-    const sessionId = new URLSearchParams(window.location.search).get('session_id');
-    if (!sessionId) {
-      setSessionError('This invitation is missing its session ID. Ask the hiring team for the interview link.');
-      setPhase('invalid');
-      return;
+  const closeCandidateRoom = useCallback((endedByRecruiter = false) => {
+    sessionClosedRef.current = true;
+    if (mediaRecorderRef.current?.state && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // The recorder may already be stopping as the room closes.
+      }
     }
-    sessionIdRef.current = sessionId;
-    getInterviewSession(sessionId)
-      .then((existing) => {
-        if (existing.session_id !== sessionId && existing.id !== sessionId) {
-          throw new Error('The backend returned a different session than the invitation requested.');
-        }
-        if (!existing.candidate_id) throw new Error('This interview session has no associated candidate.');
-        if (existing.status !== 'active') throw new Error(`This interview session is ${existing.status || 'unavailable'} and cannot be joined.`);
-        setSession(existing);
-        setActiveQuestion(existing.current_question || null);
-        lastQuestionVersionRef.current = existing.current_question?.version || 0;
-        setPhase('consent');
-      })
-      .catch((error) => {
-        setSessionError(error.message || 'Could not validate this interview invitation.');
-        setPhase('invalid');
-      });
+    clearInterval(recTimerRef.current);
+    clearInterval(sessionTimerRef.current);
+    mediaStream?.getTracks().forEach((track) => track.stop());
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setMediaStream(null);
+    setSessionEndedByRecruiter(endedByRecruiter);
+    setPhase('submitted');
+  }, [mediaStream]);
+
+  const validateInvitation = useCallback(async (sessionId) => {
+    setPhase('validating');
+    setSessionError('');
+    try {
+      const existing = await getInterviewSession(sessionId);
+      if (existing.session_id !== sessionId && existing.id !== sessionId) {
+        throw new Error('This link does not match an interview session. Check the link and try again.');
+      }
+      if (!existing.candidate_id) throw new Error('This interview session has no associated candidate. Ask HR for a new link.');
+      if (existing.status !== 'active') throw new Error('This interview is no longer open. Ask HR to create a new interview link.');
+      sessionClosedRef.current = false;
+      sessionIdRef.current = sessionId;
+      setSession(existing);
+      setActiveQuestion(existing.current_question || null);
+      lastQuestionVersionRef.current = existing.current_question?.version || 0;
+      setPhase('consent');
+    } catch (error) {
+      sessionIdRef.current = null;
+      setSessionError(error.message || 'Could not validate this interview invitation. Check the link and try again.');
+      setPhase('entry');
+    }
   }, []);
 
   useEffect(() => {
-    if (phase !== 'active' || !sessionIdRef.current) return undefined;
+    const sessionId = new URLSearchParams(window.location.search).get('session_id');
+    if (!sessionId) return undefined;
+    const validationTimer = window.setTimeout(() => validateInvitation(sessionId), 0);
+    return () => window.clearTimeout(validationTimer);
+  }, [validateInvitation]);
+
+  const handleInvitationSubmit = (event) => {
+    event.preventDefault();
+    const value = invitationInput.trim();
+    let sessionId = value;
+    try {
+      const pastedUrl = new URL(value, window.location.origin);
+      sessionId = pastedUrl.searchParams.get('session_id') || (pastedUrl.pathname === '/candidate/interview' ? '' : value);
+    } catch {
+      // Treat a plain session ID as a valid input candidate.
+    }
+    if (!sessionId || /[/?#\s]/.test(sessionId)) {
+      setSessionError('Paste the full interview link from HR, or enter its session ID.');
+      return;
+    }
+    validateInvitation(sessionId);
+  };
+
+  useEffect(() => {
+    if (!['consent', 'requesting', 'active'].includes(phase) || !sessionIdRef.current) return undefined;
     let mounted = true;
-    const refreshQuestion = async () => {
+    const refreshSession = async () => {
       try {
         const latest = await getInterviewSession(sessionIdRef.current);
-        if (!mounted || !latest.current_question) return;
+        if (!mounted) return;
+        if (latest.status !== 'active') {
+          closeCandidateRoom(true);
+          return;
+        }
+        if (phase !== 'active' || !latest.current_question) return;
         if (latest.current_question.version > lastQuestionVersionRef.current) {
           lastQuestionVersionRef.current = latest.current_question.version;
           setActiveQuestion(latest.current_question);
@@ -126,9 +173,10 @@ export default function CandidateInterviewPage() {
         // Keep the last received question visible through transient polling errors.
       }
     };
-    const interval = setInterval(refreshQuestion, 1200);
+    refreshSession();
+    const interval = setInterval(refreshSession, 1200);
     return () => { mounted = false; clearInterval(interval); };
-  }, [phase]);
+  }, [phase, closeCandidateRoom]);
 
   // ── Attach stream to video ──────────────────────────────────────────────
   useEffect(() => {
@@ -228,7 +276,7 @@ export default function CandidateInterviewPage() {
   // PERMISSION FLOW — Camera & Microphone
   // ─────────────────────────────────────────────────────────────────────────
   const handleLaunchSession = async () => {
-    if (!session || !sessionIdRef.current) {
+    if (!session || !sessionIdRef.current || sessionClosedRef.current) {
       setSessionError('A valid HR-created interview session is required before joining.');
       setPhase('invalid');
       return;
@@ -240,9 +288,14 @@ export default function CandidateInterviewPage() {
         video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
         audio: { echoCancellation: true, noiseSuppression: true },
       });
+      if (sessionClosedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       setMediaStream(stream);
       setPhase('active');
     } catch (err) {
+      if (sessionClosedRef.current) return;
       const denied = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
       setPermError(
         denied
@@ -287,6 +340,10 @@ export default function CandidateInterviewPage() {
       );
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = async () => {
+        if (sessionClosedRef.current) {
+          if (!mediaStream) stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
         await processAudio();
         if (!mediaStream) stream.getTracks().forEach((track) => track.stop());
       };
@@ -363,16 +420,49 @@ export default function CandidateInterviewPage() {
     }
   };
 
-  const endSession = () => {
-    mediaStream?.getTracks().forEach((t) => t.stop());
-    clearInterval(sessionTimerRef.current);
-    setPhase('submitted');
-  };
-
   const formatTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   if (phase === 'validating') {
     return <div className="max-w-md mx-auto text-center py-24 space-y-3"><Loader2 className="w-10 h-10 animate-spin text-indigo-600 mx-auto" /><h2 className="text-lg font-semibold text-slate-800">Validating interview invitation</h2><p className="text-sm text-slate-500">Checking the session created by the hiring team…</p></div>;
+  }
+
+  if (phase === 'entry') {
+    return (
+      <div className="max-w-xl mx-auto py-10 sm:py-16">
+        <Card className="p-6 sm:p-8 space-y-5">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <Video className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">Join your interview</h1>
+              <p className="text-sm text-slate-600 mt-1">Paste the interview link shared by your recruiter. We’ll check that the room is open before you join.</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleInvitationSubmit} className="space-y-3">
+            <label htmlFor="interview-invitation" className="block text-xs font-semibold text-slate-700">Interview link or session ID</label>
+            <input
+              id="interview-invitation"
+              type="text"
+              value={invitationInput}
+              onChange={(event) => setInvitationInput(event.target.value)}
+              placeholder="Paste the link from your recruiter"
+              autoComplete="url"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            {sessionError && <p role="alert" className="text-xs text-rose-700">{sessionError}</p>}
+            <Button type="submit" className="w-full" icon={Video}>
+              Check interview link
+            </Button>
+          </form>
+
+          <p className="text-xs text-slate-500 border-t border-slate-100 pt-4">
+            Don’t have a link, or is the room closed? Contact your recruiter and ask them to generate a new interview link.
+          </p>
+        </Card>
+      </div>
+    );
   }
 
   if (phase === 'invalid') {
@@ -484,9 +574,13 @@ export default function CandidateInterviewPage() {
             <CheckCircle2 className="w-8 h-8" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-slate-900">Assessment Submitted Successfully!</h2>
+            <h2 className="text-2xl font-bold text-slate-900">
+              {sessionEndedByRecruiter ? 'The recruiter ended this interview' : 'Assessment Submitted Successfully!'}
+            </h2>
             <p className="text-sm text-slate-500 mt-2 max-w-md mx-auto">
-              Your spoken answers and session integrity records have been securely delivered to the hiring team.
+              {sessionEndedByRecruiter
+                ? 'This interview room is now closed. Any answers you submitted have been saved for the hiring team.'
+                : 'Your spoken answers and session integrity records have been securely delivered to the hiring team.'}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 max-w-xs mx-auto">

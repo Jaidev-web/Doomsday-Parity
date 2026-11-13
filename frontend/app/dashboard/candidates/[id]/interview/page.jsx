@@ -7,7 +7,7 @@ import {
   ArrowLeft, Video, VideoOff, Mic, MicOff, Shield, AlertTriangle,
   CheckCircle2, Clock, Play, Square, ChevronRight, Clipboard, Eye,
   MessageSquare, FileText, Camera, Sparkles, Loader2, XCircle,
-  Monitor, MonitorOff, ExternalLink, Flag, Send, RefreshCw, ThumbsUp,
+  Monitor, MonitorOff, Copy, Flag, Send, RefreshCw, ThumbsUp,
   UserCheck, ShieldAlert,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -34,6 +34,7 @@ import InterviewCompletion from '@/components/interview/InterviewCompletion';
 import {
   createInterviewSession, getInterviewSession, recordIntegrityEvent,
   dispatchInterviewQuestion, saveInterviewQuestionQueue, generateQuestionsFromResume,
+  completeInterviewSession,
 } from '@/lib/interview/api';
 
 const COPILOT_TABS = [
@@ -58,11 +59,14 @@ export default function HRInterviewMonitorPage() {
   const [sessionId, setSessionId] = useState(null);
   const [launchError, setLaunchError] = useState('');
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [shareError, setShareError] = useState('');
   const invitationUrl = sessionId && typeof window !== 'undefined'
     ? `${window.location.origin}/candidate/interview?session_id=${encodeURIComponent(sessionId)}`
     : '';
   const [completed, setCompleted] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
+  const [isEndingSession, setIsEndingSession] = useState(false);
+  const [endSessionError, setEndSessionError] = useState('');
 
   // ── Camera & Gaze Proctoring Stream ───────────────────────────────────────
   const [mediaStream, setMediaStream] = useState(null);
@@ -229,7 +233,16 @@ export default function HRInterviewMonitorPage() {
     setLaunchError('');
 
     try {
-      const session = await createInterviewSession(candidateId);
+      const requestedSessionId = new URLSearchParams(window.location.search).get('session_id');
+      const session = requestedSessionId
+        ? await getInterviewSession(requestedSessionId)
+        : await createInterviewSession(candidateId);
+      if (session.candidate_id !== candidateId) {
+        throw new Error('This invitation was created for a different candidate. Return to Interviews and generate the correct link.');
+      }
+      if (session.status !== 'active') {
+        throw new Error('This interview session is no longer active. Generate a new interview link from the Interviews page.');
+      }
       const backendSessionId = session.session_id || session.id;
       if (!backendSessionId) throw new Error('The backend did not return an interview session ID.');
       setSessionId(backendSessionId);
@@ -275,12 +288,13 @@ export default function HRInterviewMonitorPage() {
 
   const copyInvitation = async () => {
     if (!invitationUrl) return;
+    setShareError('');
     try {
       await navigator.clipboard.writeText(invitationUrl);
       setInviteCopied(true);
       setTimeout(() => setInviteCopied(false), 1800);
     } catch {
-      setLaunchError('Could not copy the invitation link. Please copy it from the field.');
+      setShareError('Could not copy automatically. Select the link above and copy it.');
     }
   };
 
@@ -368,17 +382,36 @@ export default function HRInterviewMonitorPage() {
     }
   };
 
-  const handleEndSession = () => {
-    if (mediaStream) {
-      mediaStream.getTracks().forEach((t) => t.stop());
+  const handleEndSession = async () => {
+    if (!sessionId || isEndingSession) return;
+    setIsEndingSession(true);
+    setEndSessionError('');
+    try {
+      const result = await completeInterviewSession(sessionId, {
+        ended_by: 'hr',
+        question_count: history.length + (latestAnswer && lastArchivedAnswerIdRef.current !== latestAnswer.id ? 1 : 0),
+        duration_seconds: sessionDuration,
+      });
+      if (result.status !== 'completed') throw new Error('The backend did not confirm that the interview ended.');
+      mediaStream?.getTracks().forEach((track) => track.stop());
+      setMediaStream(null);
+      setIsMonitorLaunched(false);
+      setShowEndModal(false);
+      setCompleted(true);
+    } catch (error) {
+      setEndSessionError(error.message || 'Could not end the interview. Please try again.');
+    } finally {
+      setIsEndingSession(false);
     }
-    setCompleted(true);
   };
 
   const handleResetSession = () => {
+    router.replace(`/dashboard/candidates/${candidateId}/interview`);
     setCompleted(false);
     setIsMonitorLaunched(false);
+    setSessionId(null);
     setSessionDuration(0);
+    setEndSessionError('');
     setHistory([]);
     setIntegrityEvents([]);
     setTabSwitches(0);
@@ -484,32 +517,13 @@ export default function HRInterviewMonitorPage() {
             </div>
 
             <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-indigo-900 font-semibold text-xs uppercase tracking-wide">
-                  <Video className="w-4 h-4 text-indigo-600" />
-                  Candidate Interview Room
-                </span>
-                <Link
-                  href={invitationUrl || '/candidate/interview'}
-                  target="_blank"
-                  className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline font-semibold"
-                >
-                  Open Candidate Portal <ExternalLink className="w-3 h-3" />
-                </Link>
-              </div>
+              <span className="flex items-center gap-2 text-indigo-900 font-semibold text-xs uppercase tracking-wide">
+                <Video className="w-4 h-4 text-indigo-600" />
+                Candidate interview link
+              </span>
               <p className="text-xs text-slate-600 leading-relaxed">
-                The candidate joins through the invitation URL for backend session <code className="bg-white px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-700 font-mono text-[11px]">{sessionId || 'created when launched'}</code>.
-                They see the HR interviewer's camera tile, read dispatched questions, and record answers via microphone.
+                Start the HR monitor to create the interview session. The shareable candidate link will be available here once the monitor is running.
               </p>
-              <div className="pt-1">
-                <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-mono font-medium">
-                  {sessionId ? 'Shared session invitation ready' : 'Launch the interview to create an invitation'}
-                </span>
-              </div>
-              {invitationUrl && <div className="flex gap-2 pt-2">
-                <input readOnly value={invitationUrl} aria-label="Candidate invitation URL" className="min-w-0 flex-1 rounded-lg border border-indigo-200 bg-white px-2 py-1.5 text-[11px] text-slate-700" />
-                <Button variant="secondary" size="sm" onClick={copyInvitation}>{inviteCopied ? 'Copied' : 'Copy link'}</Button>
-              </div>}
             </div>
           </div>
         </Card>
@@ -568,21 +582,32 @@ export default function HRInterviewMonitorPage() {
             Integrity: {gazeAssessment.status === 'high' ? 'HIGH' : gazeAssessment.status === 'low' ? 'LOW' : 'WAITING'}
           </div>
 
-          {/* Candidate Room Link */}
-          <Link
-            href={invitationUrl || '/candidate/interview'}
-            target="_blank"
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-          >
-            Candidate Room <ExternalLink className="w-3 h-3 text-slate-400" />
-          </Link>
-
           {/* End Session Button */}
           <Button variant="danger" size="sm" onClick={() => setShowEndModal(true)}>
             End Session
           </Button>
         </div>
       </div>
+
+      <section aria-label="Share candidate interview link" className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 flex flex-col lg:flex-row lg:items-center gap-3">
+        <div className="min-w-0 lg:w-64 shrink-0">
+          <h3 className="text-sm font-semibold text-indigo-950">Share this interview</h3>
+          <p className="text-[11px] text-indigo-800 mt-0.5">Send this link to the candidate to join the current session.</p>
+        </div>
+        <div className="flex min-w-0 flex-1 gap-2">
+          <input
+            readOnly
+            value={invitationUrl}
+            aria-label="Candidate interview invitation link"
+            onFocus={(event) => event.target.select()}
+            className="min-w-0 flex-1 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs text-slate-700"
+          />
+          <Button variant="secondary" size="sm" onClick={copyInvitation} icon={Copy}>
+            {inviteCopied ? 'Copied' : 'Copy link'}
+          </Button>
+        </div>
+        {shareError && <p role="alert" className="text-xs text-rose-700 lg:ml-64">{shareError}</p>}
+      </section>
 
       {/* Main 2-Column Responsive Layout (5 cols left, 7 cols right on desktop) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full">
@@ -901,11 +926,10 @@ export default function HRInterviewMonitorPage() {
       {showEndModal && (
         <EndInterviewModal
           questionCount={history.length + (latestAnswer && lastArchivedAnswerIdRef.current !== latestAnswer.id ? 1 : 0)}
-          onConfirm={() => {
-            setShowEndModal(false);
-            handleEndSession();
-          }}
+          onConfirm={handleEndSession}
           onCancel={() => setShowEndModal(false)}
+          isEnding={isEndingSession}
+          error={endSessionError}
         />
       )}
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -34,7 +34,15 @@ import {
 
 const DEMO_HR_EMAIL = 'hr@gmail.com';
 
-export default function HRAuthPage({ initialTab = 'login' }) {
+export default function HRAuthPage(props) {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-slate-500">Loading sign in…</div>}>
+      <HRAuthForm {...props} />
+    </Suspense>
+  );
+}
+
+function HRAuthForm({ initialTab = 'login' }) {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState(initialTab); // login | signup | forgot | email-link
   const [loginMethod, setLoginMethod] = useState('password');

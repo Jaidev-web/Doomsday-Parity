@@ -1,5 +1,7 @@
-from pydantic_settings import BaseSettings
+from pathlib import Path
 from typing import Optional
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -18,7 +20,13 @@ class Settings(BaseSettings):
     FIREBASE_PROJECT_ID: Optional[str] = None
     FRONTEND_ORIGINS: str = "http://localhost:3000"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # Resolve the backend config from this file, not the shell's working
+    # directory. This keeps `backend/.env` active when Uvicorn is launched
+    # from either the repository root or the backend directory.
+    model_config = {
+        "env_file": str(Path(__file__).resolve().parents[1] / ".env"),
+        "env_file_encoding": "utf-8",
+    }
 
 
 settings = Settings()

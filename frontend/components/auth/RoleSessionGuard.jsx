@@ -18,7 +18,12 @@ export function RoleSessionGuard({ role, children }) {
     }
 
     if (!valid) {
-      router.replace(role === 'hr' ? '/login/hr' : '/login/candidate');
+      if (role === 'candidate' && window.location.pathname === '/candidate/interview') {
+        const sessionId = new URLSearchParams(window.location.search).get('session_id');
+        router.replace(sessionId ? `/login/candidate?session_id=${encodeURIComponent(sessionId)}` : '/login/candidate');
+      } else {
+        router.replace(role === 'hr' ? '/login/hr' : '/login/candidate');
+      }
       return;
     }
     setReady(true);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -33,10 +33,19 @@ import {
 } from '@/lib/firebase';
 
 const DEMO_CANDIDATE_EMAIL = 'test@gmail.com';
+const DEMO_HR_EMAIL = 'hr@gmail.com';
 
-export default function CandidateAuthPage({ initialTab = 'login' }) {
+export default function CandidateAuthPage(props) {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-slate-500">Loading sign in…</div>}>
+      <CandidateAuthForm {...props} />
+    </Suspense>
+  );
+}
+
+function CandidateAuthForm({ initialTab = 'login' }) {
   const searchParams = useSearchParams();
-  const interviewId = searchParams.get('interviewId');
+  const interviewSessionId = searchParams.get('session_id');
   const [activeTab, setActiveTab] = useState(initialTab); // login | signup | forgot | email-link
   const [loginMethod, setLoginMethod] = useState('password');
   const [loading, setLoading] = useState(false);
@@ -100,6 +109,11 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
       return;
     }
 
+    if (activeTab === 'login' && email.toLowerCase() === DEMO_HR_EMAIL) {
+      toast.error('That is the recruiter demo account. Use the Recruiter Sign In page.');
+      return;
+    }
+
     if (loginMethod === 'password' && email.toLowerCase() === DEMO_CANDIDATE_EMAIL) {
       if (!form.password) {
         toast.error('Enter the demo password to continue.');
@@ -111,8 +125,11 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
         const result = await api.auth.demoLogin(email, form.password, 'candidate');
         if (result?.authenticated && result.user) {
           storeAppSession('candidate', result.user);
-          if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
-          window.location.replace('/candidate');
+          if (interviewSessionId) {
+            window.location.replace(`/candidate/interview?session_id=${encodeURIComponent(interviewSessionId)}`);
+          } else {
+            window.location.replace('/candidate');
+          }
           return;
         }
         throw new Error(result?.enabled ? 'That demo password is incorrect.' : 'Demo password sign-in is disabled on the backend.');
@@ -134,7 +151,7 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
         await sendEmailSignInLink({ email, role: 'candidate' });
         setLinkTarget(email);
         setNoticeKind('sign-in');
-        if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
+        if (interviewSessionId) window.localStorage.setItem('pending_interview_id', interviewSessionId);
         setActiveTab('email-link');
         toast.success('Sign-in link sent to your email.');
       } else {
@@ -154,8 +171,11 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
           toast.success('Verify your email before continuing.');
         } else {
           await establishFirebaseSession(user, 'candidate', profile);
-          if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
-          window.location.replace('/candidate');
+          if (interviewSessionId) {
+            window.location.replace(`/candidate/interview?session_id=${encodeURIComponent(interviewSessionId)}`);
+          } else {
+            window.location.replace('/candidate');
+          }
         }
       }
     } catch (err) {
@@ -476,6 +496,14 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
                         className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
                       />
                     </div>
+                    {activeTab === 'login' && form.email.trim().toLowerCase() === DEMO_HR_EMAIL && (
+                      <p className="mt-1.5 text-xs text-amber-700" role="status">
+                        This is the recruiter demo email.{' '}
+                        <Link href="/login/hr" className="font-semibold underline underline-offset-2 hover:text-amber-900">
+                          Go to Recruiter Sign In
+                        </Link>
+                      </p>
+                    )}
                   </div>
 
                   {activeTab === 'login' && loginMethod === 'password' && (
