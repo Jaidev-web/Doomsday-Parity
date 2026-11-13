@@ -234,8 +234,9 @@ pnpm run dev
 ### B. Cleaned HR Top Navigation
 - Removed the redundant `Public Site` button and divider from the HR top bar in `frontend/app/dashboard/layout.jsx`. Clicking the TrustHire logo in the upper-left of the sidebar navigates directly to the Home page (`/`).
 
-### C. Removed Direct Public Profile Bypass ("View Marcus Rivera Dossier")
+### C. Removed Direct Cross-Portal Bridges & Public Profile Bypasses
 - Removed the public "View Marcus Rivera Dossier" button on the landing page (`frontend/app/page.js`), enforcing that all candidate dossiers and trust records remain gated behind the authenticated HR portal.
+- Removed the "Switch to HR Portal →" link from the Candidate Portal navigation header (`frontend/app/candidate/layout.jsx`), maintaining strict role segregation so candidate environments cannot directly bridge into administrative HR routes.
 
 ### D. Tailwind CSS v4 & Next.js 16 Turbopack Fix
 - Compiled `@tailwindcss/cli` output into `frontend/app/tailwind.css` and linked it directly in `frontend/app/layout.js`, ensuring all utility classes, colors, gradients, and responsive layouts render properly without Turbopack subprocess conflicts.

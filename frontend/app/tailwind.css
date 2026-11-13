@@ -2387,9 +2387,6 @@
     .sm\:inline-block {
       display: inline-block;
     }
-    .sm\:inline-flex {
-      display: inline-flex;
-    }
     .sm\:h-14 {
       height: calc(var(--spacing) * 14);
     }
