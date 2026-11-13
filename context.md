@@ -269,6 +269,26 @@ pnpm run dev
     - Clicking anywhere else on the row navigates seamlessly to the full candidate dossier (`/dashboard/candidates/[id]`).
   - Recruiters can still toggle freely between List View and Grid View (Cards).
 
+### G. Animated Verification Interstitials for Document Submissions
+- Built `<VerificationAnimationModal />` (`frontend/components/candidate/VerificationAnimationModal.jsx`) featuring animated bouncing vector icons, a gradient progress bar, and sequential "Checking..." to "Completed" status transitions (using "Checking..." while actively scanning and "Completed" upon completion).
+- **Resume & Digital Footprint Verification (Step 2)**:
+  - Triggers when the candidate completes Step 2 and clicks "Verify & Continue".
+  - Runs animated forensic checks across:
+    1. **Metadata**: Resume PDF creation date, author tags & revision history.
+    2. **Links**: Profile URLs reachability, domain DNS & HTTPS SSL validity.
+    3. **LinkedIn**: Career tenure timeline & role progression vs. resume.
+    4. **GitHub**: Repository creation dates, commit volume & account age.
+- **Comprehensive Multi-Vector Verification (Step 3)**:
+  - Triggers upon submitting certificates and government ID proofs.
+  - Concurrently audits all 6 vectors alongside the backend document upload pipeline:
+    1. **Certificates**: Professional certificate issuer signatures & issue dates.
+    2. **Personal Identifiers**: Government ID legal name match & document authenticity.
+    3. **Metadata**: Image EXIF, PDF byte streams & hex signatures.
+    4. **LinkedIn**: Career timeline cross-referencing.
+    5. **GitHub**: Codebase integrity & language alignment.
+    6. **Links**: Multi-vector deterministic trust score synthesis.
+  - Smoothly finishes onto Step 4 (Submission Confirmation) featuring a 6/6 checks completed summary card.
+
 ---
 
 ## 9. Immediate Next Steps / Roadmap for Contributors
