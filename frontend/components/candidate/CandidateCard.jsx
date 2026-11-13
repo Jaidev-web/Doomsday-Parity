@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   XCircle,
   ExternalLink,
-  Info,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
@@ -59,90 +58,99 @@ export function CandidateCard({ candidate }) {
         }}
         className="group relative bg-white rounded-2xl border border-slate-200 p-5 shadow-xs transition-all duration-200 transform hover:scale-[1.02] hover:shadow-xl hover:border-indigo-300 cursor-pointer flex flex-col justify-between text-left focus:outline-none focus:ring-2 focus:ring-indigo-500"
       >
-        {/* Top Header: Avatar + Info + Trust Score */}
         <div>
+          {/* Header: Avatar, Info, Status, and Trust Score */}
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3.5">
-              <Avatar name={candidate.name} size="lg" />
-              <div>
+            <div className="flex items-center gap-3 min-w-0">
+              <Avatar name={candidate.name} size="md" className="shrink-0" />
+              <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                  <h3 className="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
                     {candidate.name}
-                  </span>
-                  <Badge status={candidate.overall_status} className="text-[10px]" />
+                  </h3>
+                  <Badge status={candidate.overall_status} className="text-[10px] shrink-0" />
                 </div>
-                <p className="text-xs text-slate-600 mt-0.5 font-medium">{candidate.position}</p>
-                <p className="text-[11px] text-slate-400 mt-1">Updated {formatDate(candidate.updated_at)}</p>
+                <p className="text-xs text-slate-500 font-medium truncate mt-0.5">{candidate.position}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Updated {formatDate(candidate.updated_at)}</p>
               </div>
             </div>
 
-            {/* Trust Score Pill */}
-            <div className="flex flex-col items-end shrink-0">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 group-hover:border-indigo-200 transition-colors">
-                <Shield className="w-4 h-4" style={{ color: trustColor }} />
-                <span className="text-base font-extrabold text-slate-900">
-                  {Math.round(candidate.trust_score)}
-                </span>
-                <span className="text-xs text-slate-400 font-medium">/100</span>
+            {/* Compact Trust Score Badge */}
+            <div className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 group-hover:border-indigo-200 transition-colors">
+              <Shield className="w-4 h-4 shrink-0" style={{ color: trustColor }} />
+              <div className="flex items-baseline gap-0.5">
+                <span className="text-sm font-extrabold text-slate-900">{Math.round(candidate.trust_score)}</span>
+                <span className="text-[10px] text-slate-400 font-semibold">/100</span>
               </div>
-              <span className="text-[10px] text-slate-400 mt-1 font-medium">Trust Score</span>
             </div>
           </div>
 
-          {/* Quick interactive buttons for Credentials and Identity */}
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-              Verification Vectors
-            </p>
-            <div className="grid grid-cols-2 gap-2.5">
-              {/* Credentials Button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowCredModal(true);
-                }}
-                className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 hover:bg-indigo-50/80 hover:border-indigo-300 hover:shadow-xs transition-all text-left"
-                title="Click to view credentials details"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="p-1 rounded-md bg-white border border-slate-200 text-indigo-600 shadow-2xs">
-                    <FileCheck className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <span className="block text-xs font-semibold text-slate-800">Credentials</span>
-                    <span className="block text-[10px] text-slate-400">
-                      {credentialChecks.length} checks
-                    </span>
-                  </div>
-                </div>
-                <Badge status={candidate.credential_status || 'pending'} className="text-[10px] px-2" />
-              </button>
-
-              {/* Identity Button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowIdentityModal(true);
-                }}
-                className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 hover:bg-indigo-50/80 hover:border-indigo-300 hover:shadow-xs transition-all text-left"
-                title="Click to view identity details"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="p-1 rounded-md bg-white border border-slate-200 text-indigo-600 shadow-2xs">
-                    <Fingerprint className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <span className="block text-xs font-semibold text-slate-800">Identity</span>
-                    <span className="block text-[10px] text-slate-400">
-                      {identityChecks.length} checks
-                    </span>
-                  </div>
-                </div>
-                <Badge status={candidate.identity_status || 'pending'} className="text-[10px] px-2" />
-              </button>
+          {/* Interactive buttons for Credentials and Identity */}
+          <div className="mt-4 pt-3.5 border-t border-slate-100 space-y-2">
+            <div className="flex items-center justify-between px-0.5">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Verification Vectors
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">Click to inspect</span>
             </div>
+
+            {/* Credentials Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowCredModal(true);
+              }}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-slate-200/90 bg-slate-50/70 hover:bg-indigo-50/80 hover:border-indigo-300 hover:shadow-xs transition-all text-left group/btn"
+              title="Click to view credentials details"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-1.5 rounded-lg bg-white border border-slate-200 text-indigo-600 shadow-2xs group-hover/btn:border-indigo-300 shrink-0">
+                  <FileCheck className="w-3.5 h-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <span className="block text-xs font-semibold text-slate-800 group-hover/btn:text-indigo-900">
+                    Credentials
+                  </span>
+                  <span className="block text-[10px] text-slate-400 truncate">
+                    {credentialChecks.length} checks performed
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                <Badge status={candidate.credential_status || 'pending'} className="text-[10px] px-2" />
+                <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover/btn:text-indigo-500 group-hover/btn:translate-x-0.5 transition-all" />
+              </div>
+            </button>
+
+            {/* Identity Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowIdentityModal(true);
+              }}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-slate-200/90 bg-slate-50/70 hover:bg-indigo-50/80 hover:border-indigo-300 hover:shadow-xs transition-all text-left group/btn"
+              title="Click to view identity details"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-1.5 rounded-lg bg-white border border-slate-200 text-indigo-600 shadow-2xs group-hover/btn:border-indigo-300 shrink-0">
+                  <Fingerprint className="w-3.5 h-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <span className="block text-xs font-semibold text-slate-800 group-hover/btn:text-indigo-900">
+                    Identity
+                  </span>
+                  <span className="block text-[10px] text-slate-400 truncate">
+                    {identityChecks.length} checks performed
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                <Badge status={candidate.identity_status || 'pending'} className="text-[10px] px-2" />
+                <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover/btn:text-indigo-500 group-hover/btn:translate-x-0.5 transition-all" />
+              </div>
+            </button>
           </div>
         </div>
 
@@ -175,7 +183,6 @@ export function CandidateCard({ candidate }) {
         maxWidth="max-w-2xl"
       >
         <div className="space-y-4">
-          {/* Status summary banner */}
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
@@ -188,7 +195,6 @@ export function CandidateCard({ candidate }) {
             <Badge status={candidate.credential_status || 'pending'} className="text-xs px-3 py-1" />
           </div>
 
-          {/* Verification checks list */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
               Verification Checks ({credentialChecks.length})
@@ -255,7 +261,6 @@ export function CandidateCard({ candidate }) {
             )}
           </div>
 
-          {/* Modal Actions */}
           <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
             <Button variant="outline" size="sm" onClick={() => setShowCredModal(false)}>
               Close
@@ -285,7 +290,6 @@ export function CandidateCard({ candidate }) {
         maxWidth="max-w-2xl"
       >
         <div className="space-y-4">
-          {/* Status summary banner */}
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
@@ -298,7 +302,6 @@ export function CandidateCard({ candidate }) {
             <Badge status={candidate.identity_status || 'pending'} className="text-xs px-3 py-1" />
           </div>
 
-          {/* Verification checks list */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
               Identity Checks ({identityChecks.length})
@@ -365,7 +368,6 @@ export function CandidateCard({ candidate }) {
             )}
           </div>
 
-          {/* Modal Actions */}
           <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
             <Button variant="outline" size="sm" onClick={() => setShowIdentityModal(false)}>
               Close

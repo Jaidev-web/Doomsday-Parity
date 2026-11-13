@@ -254,14 +254,20 @@ pnpm run dev
   - Clicking the card directly opens the complete candidate dossier (`/dashboard/candidates/[id]`) with the circular Trust Score gauge, full findings breakdowns, and Gemma 4 AI chat assistant.
 - **Dedicated Credentials & Identity Detail Modals**:
   - Integrated dedicated "Credentials" and "Identity" buttons on each candidate card with check counters and real-time status badges.
+  - Buttons are structured in a full-width vertical stack within each card to prevent horizontal badge overflow, text wrapping collisions, and clipping.
   - Clicking either button utilizes `e.stopPropagation()` to prevent card navigation and opens an in-depth modal (`frontend/components/ui/Modal.jsx`) detailing all forensic checks:
     - Overall vector status banner.
     - Check title, check type (`employment_dates`, `cert_metadata`, `github_analysis`, `name_consistency`, `document_info`, etc.), status, and severity tag (`critical`, `high`, `medium`, `low`).
     - Forensic explanations and bulleted cited evidence lists.
     - Action button linking to the full candidate profile and trust score.
-- **Candidates Directory Defaults**:
-  - Updated `frontend/app/dashboard/candidates/page.jsx` to default `viewMode` to `'grid'` (Cards) so recruiters immediately see the interactive cards with hover scaling.
-  - Table view also updated with clickable rows and interactive Credentials/Identity badges triggering the same detail modals.
+- **Candidates Directory Defaults & In-Row Button Placement**:
+  - Set `viewMode` default to `'table'` (List View) so recruiters land on the clean tabular overview.
+  - Positioned the small interactive `{ Credentials, Identity }` buttons directly under each candidate's name and email horizontally inside the `Candidate` column:
+    - Candidate Cell: Avatar + Name + Email + horizontal `[ 📄 Credentials (badge) ] [ 🆔 Identity (badge) ]`.
+    - Removed the standalone `Verifications` column to keep the table compact, preventing horizontal scrolling and right-edge clipping.
+    - Clicking either small button opens the respective verification detail modal with `e.stopPropagation()`.
+    - Clicking anywhere else on the row navigates seamlessly to the full candidate dossier (`/dashboard/candidates/[id]`).
+  - Recruiters can still toggle freely between List View and Grid View (Cards).
 
 ---
 

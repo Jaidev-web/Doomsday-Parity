@@ -34,7 +34,7 @@ export default function CandidatesListPage() {
   const [candidates, setCandidates] = useState(DEMO_CANDIDATES);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [viewMode, setViewMode] = useState('grid'); // Default to grid for revamped candidate cards
+  const [viewMode, setViewMode] = useState('table'); // Default to list view as requested
   const [tableModal, setTableModal] = useState({ isOpen: false, type: null, candidate: null });
 
   useEffect(() => {
@@ -132,18 +132,18 @@ export default function CandidatesListPage() {
           {/* Toggle View */}
           <div className="flex items-center border border-slate-200 rounded-lg p-0.5 bg-slate-50">
             <button
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded ${viewMode === 'table' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-400 hover:text-slate-700'}`}
+              title="List View"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
               onClick={() => setViewMode('grid')}
               className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-400 hover:text-slate-700'}`}
               title="Grid View (Cards)"
             >
               <LayoutGrid className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded ${viewMode === 'table' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-400 hover:text-slate-700'}`}
-              title="Table View"
-            >
-              <List className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -169,8 +169,6 @@ export default function CandidatesListPage() {
                 <TableHead>Candidate</TableHead>
                 <TableHead>Position</TableHead>
                 <TableHead>Trust Score</TableHead>
-                <TableHead>Credentials</TableHead>
-                <TableHead>Identity</TableHead>
                 <TableHead>Interview</TableHead>
                 <TableHead>Last Updated</TableHead>
                 <TableHead className="text-right">Action</TableHead>
@@ -183,16 +181,55 @@ export default function CandidatesListPage() {
                   <TableRow
                     key={candidate.id}
                     onClick={() => router.push(`/dashboard/candidates/${candidate.id}`)}
-                    className="cursor-pointer hover:bg-slate-50 transition-colors"
+                    className="cursor-pointer hover:bg-slate-50 transition-colors group"
                   >
                     <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar name={candidate.name} size="sm" />
-                        <div>
-                          <span className="text-sm font-semibold text-slate-900 hover:text-indigo-600">
-                            {candidate.name}
-                          </span>
-                          <span className="block text-[11px] text-slate-400">{candidate.email}</span>
+                      <div className="flex items-start gap-3 py-1">
+                        <Avatar name={candidate.name} size="sm" className="mt-0.5 shrink-0" />
+                        <div className="space-y-1.5">
+                          <div>
+                            <span className="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                              {candidate.name}
+                            </span>
+                            <span className="block text-[11px] text-slate-400">{candidate.email}</span>
+                          </div>
+
+                          {/* Small horizontal buttons for Credentials and Identity under name */}
+                          <div className="flex items-center gap-2 pt-0.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTableModal({ isOpen: true, type: 'credential', candidate });
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-slate-200 bg-white hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 text-slate-700 text-[11px] font-medium transition-all shadow-2xs group/btn"
+                              title="Click to view credentials details"
+                            >
+                              <FileCheck className="w-3 h-3 text-indigo-600 shrink-0" />
+                              <span>Credentials</span>
+                              <Badge
+                                status={candidate.credential_status || 'pending'}
+                                className="text-[9px] px-1.5 py-0 leading-tight"
+                              />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTableModal({ isOpen: true, type: 'identity', candidate });
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-slate-200 bg-white hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 text-slate-700 text-[11px] font-medium transition-all shadow-2xs group/btn"
+                              title="Click to view identity details"
+                            >
+                              <Fingerprint className="w-3 h-3 text-indigo-600 shrink-0" />
+                              <span>Identity</span>
+                              <Badge
+                                status={candidate.identity_status || 'pending'}
+                                className="text-[9px] px-1.5 py-0 leading-tight"
+                              />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </TableCell>
@@ -208,32 +245,6 @@ export default function CandidatesListPage() {
                         </span>
                         <Badge status={candidate.overall_status} className="ml-1 text-[10px]" />
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setTableModal({ isOpen: true, type: 'credential', candidate });
-                        }}
-                        className="hover:opacity-80 transition-opacity"
-                        title="Click to view credentials details"
-                      >
-                        <Badge status={candidate.credential_status || 'pending'} />
-                      </button>
-                    </TableCell>
-                    <TableCell>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setTableModal({ isOpen: true, type: 'identity', candidate });
-                        }}
-                        className="hover:opacity-80 transition-opacity"
-                        title="Click to view identity details"
-                      >
-                        <Badge status={candidate.identity_status || 'pending'} />
-                      </button>
                     </TableCell>
                     <TableCell>
                       <Badge status={candidate.interview_status || 'pending'} />
