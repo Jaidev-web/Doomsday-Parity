@@ -434,6 +434,14 @@ pnpm run dev
     - When expanded: clicking the `PanelLeftClose` icon collapses the sidebar to compact icon-only mode (`w-20`).
     - When collapsed: clicking the centered `PanelLeft` icon expands the sidebar back to its default open state (`w-64`).
 
+### L. Candidate Portal Smooth Transition Animations
+- **Horizontal Sliding Active Indicator**:
+  - Added a dynamic measurement-based sliding active pill backdrop (`bg-emerald-50 border border-emerald-200 shadow-2xs`) in `frontend/app/candidate/layout.jsx`.
+  - Glides smoothly between `Portal Home`, `Submit Documents`, `Join Interview Room`, and `Application Status` using cubic-bezier easing (`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]`).
+  - Added gentle icon hover scaling (`group-hover:scale-110`) and smooth label color transitions.
+- **Page Swapping Transition**:
+  - Mounted `<main key={pathname} className="animate-in fade-in-50 duration-200">` in the candidate layout so transitioning between candidate pages provides the same seamless swapping fade effect as the recruiter dashboard.
+
 ---
 
 ## 10. Immediate Next Steps / Roadmap for Contributors

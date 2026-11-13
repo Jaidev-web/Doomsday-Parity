@@ -18,7 +18,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { RoleSessionGuard } from '@/components/auth/RoleSessionGuard';
+import { RoleSessionGuard, signOutRoleSession } from '@/components/auth/RoleSessionGuard';
 
 export default function DashboardLayout({ children }) {
   const pathname = usePathname();

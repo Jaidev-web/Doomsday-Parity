@@ -2265,9 +2265,6 @@
   .whitespace-pre-wrap {
     white-space: pre-wrap;
   }
-  .text-\[\#0A66C2\] {
-    color: #0A66C2;
-  }
   .text-amber-400 {
     color: var(--color-amber-400);
   }
@@ -2866,6 +2863,14 @@
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-slate-100\/50:hover {
         background-color: color-mix(in oklab, var(--color-slate-100) 50%, transparent);
+      }
+    }
+    .hover\:bg-slate-100\/60:hover {
+      background-color: color-mix(in srgb, oklch(96.8% 0.007 247.896) 60%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-slate-100\/60:hover {
+        background-color: color-mix(in oklab, var(--color-slate-100) 60%, transparent);
       }
     }
     .hover\:bg-slate-100\/70:hover {
