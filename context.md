@@ -21,7 +21,7 @@
 |---|---|---|
 | **Frontend** | Next.js 16 (App Router), React 19, Tailwind CSS v4, Lucide React | Single-page and dashboard components built in `.jsx` for rapid iteration. Uses Tailwind CSS compiled into `app/tailwind.css`. Global `<Toaster />` mounted in root `layout.js` for reactive event notifications. |
 | **Authentication & Security** | Canvas API, SpeechSynthesis, Pub/Sub Toast Event Bus | Client-side dual authentication suite (Candidate & HR). Implements canvas distortion security CAPTCHAs with audio synthesis for candidates, 6-digit auto-advancing OTP boxes with resend countdowns, and 3-step password recovery. |
-| **Backend** | Python 3.13, FastAPI, Pydantic v2, Uvicorn, httpx | Modular REST API with route segregation. In-memory dictionary database (`MockDB`) with automatic demo seeding on startup — no external DB or Firebase required to run. |
+| **Backend** | Python 3.13, FastAPI, Pydantic v2, Uvicorn, httpx, firebase-admin | Modular REST API with route segregation. Uses a dynamic `DatabaseManager` to switch between an in-memory `MockDB` (for demo/local development) and `FirebaseDB` (for production persistence) based on `DEMO_MODE` environment toggle. |
 | **AI Layer** | Gemma 4 integration via `AIService` | Supports live Gemma endpoints with automatic fallback to realistic `[Demo Mode]` responses if no API key is provided. |
 | **Documents** | PyPDF2, python-docx, Pillow | Extracts text and PDF metadata (`/Author`, `/CreationDate`) for forensic tamper checks. |
 
@@ -42,8 +42,9 @@ c:\Doomsday-Parity\
 │   │   │   ├── interview.py              # InterviewEvent, InterviewSession, Report
 │   │   │   └── ai_review.py              # AIQuestion, AIResponse, AIHistory
 │   │   ├── db/
+│   │   │   ├── manager.py                # Database factory (switches between Mock and Firebase)
 │   │   │   ├── mock_db.py                # Thread-safe in-memory store
-│   │   │   └── firebase.py               # Firebase client stub with fallback
+│   │   │   └── firebase.py               # Firestore implementation with Admin SDK
 │   │   ├── demo/
 │   │   │   └── seed.py                   # Pre-seeded test candidates (Sarah, Marcus, Priya)
 │   │   ├── services/
@@ -236,6 +237,11 @@ pnpm run dev
 ### C. Tailwind CSS v4 & Next.js 16 Turbopack Fix
 - Compiled `@tailwindcss/cli` output into `frontend/app/tailwind.css` and linked it directly in `frontend/app/layout.js`, ensuring all utility classes, colors, gradients, and responsive layouts render properly without Turbopack subprocess conflicts.
 
+### D. Firebase Integration & Persistence
+- **Implemented Firestore Backend**: Fully integrated `firebase-admin` into the backend. 
+- **Dynamic Database Switching**: Introduced `DatabaseManager` in `backend/app/db/manager.py`. When `DEMO_MODE=False` is set in `.env`, the system automatically routes all CRUD operations to live Firestore collections instead of in-memory dictionaries.
+- **Seeding Support**: The `seed_demo_data()` function now supports pushing demo candidates directly to Firebase on the first run of a new environment.
+
 ---
 
 ## 9. Immediate Next Steps / Roadmap for Contributors
@@ -243,5 +249,5 @@ pnpm run dev
 If you are picking up work on this project, consider these high-leverage enhancements:
 1. **Real Gemma 4 Connection**: Configure `GEMMA_API_KEY` and `GEMMA_API_BASE_URL` in `backend/.env` to connect to a live Ollama or Vertex AI instance instead of demo mock responses.
 2. **Real WebRTC / Camera Feed**: Enhance `frontend/app/dashboard/candidates/[id]/interview/page.jsx` with real face-mesh or face-api.js detection for multi-face detection.
-3. **Firebase Persistence**: Connect a real Firebase project by setting `FIREBASE_CREDENTIALS_PATH` in `backend/app/config.py` to persist uploaded candidate documents and audits across restarts.
+3. **Configure Firebase**: While implemented, a live project requires setting `FIREBASE_CREDENTIALS_PATH` and `FIREBASE_PROJECT_ID` in `backend/.env` to activate persistence.
 4. **PDF Report Export**: Wire up client-side PDF export (e.g., using `jspdf` or `html2canvas`) on `/dashboard/reports` and candidate profiles.

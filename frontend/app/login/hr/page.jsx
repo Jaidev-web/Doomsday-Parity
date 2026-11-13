@@ -255,7 +255,7 @@ export default function HRAuthPage({ initialTab = 'login' }) {
                 <ShieldCheck className="w-3.5 h-3.5" />
                 HR Operations Portal
               </div>
-              <span className="text-[11px] font-mono text-slate-400">Admin Only</span>
+              <span className="text-[11px] font-mono text-slate-400"></span>
             </div>
 
             {/* Sub-views: OTP, Forgot Password, or Main Tabs */}
