@@ -11,6 +11,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { api } from '@/lib/api';
+import { getInterviewSession, submitInterviewAnswer, uploadAudioForTranscription } from '@/lib/interview/api';
+import EyeGazeTracker from '@/components/interview/EyeGazeTracker';
 
 // Interview components
 import HRCameraTile from '@/components/interview/HRCameraTile';
@@ -39,20 +41,14 @@ const REC = {
   ERROR: 'error',
 };
 
-// Default questions shown when backend is not connected
-const DEMO_QUESTIONS = [
-  { id: 'q1', text: 'Tell me about yourself — your engineering background and what brought you to apply for this role.', category: 'Opening' },
-  { id: 'q2', text: 'Walk me through a project you are most proud of. What was your contribution and what challenges did you overcome?', category: 'Resume' },
-  { id: 'q3', text: 'Describe a challenging technical problem you solved. What trade-offs did you make and why?', category: 'Technical' },
-  { id: 'q4', text: 'Tell me about a time you disagreed with a team member on a technical decision. How did you handle it?', category: 'Behavioural' },
-  { id: 'q5', text: 'Is there anything on your resume you would like to revisit or clarify before we wrap up?', category: 'Closing' },
-];
-
 export default function CandidateInterviewPage() {
-  const sessionIdRef = useRef('session-cand-' + Date.now());
+  const sessionIdRef = useRef(null);
+  const [session, setSession] = useState(null);
+  const [sessionError, setSessionError] = useState('');
+  const [gazeAssessment, setGazeAssessment] = useState({ status: 'loading' });
 
   // ── Permission & Session Phase ────────────────────────────────────────────
-  const [phase, setPhase] = useState('consent'); // consent|requesting|active|denied|submitted
+  const [phase, setPhase] = useState('validating'); // validating|consent|requesting|active|denied|submitted|invalid
   const [permError, setPermError] = useState('');
 
   // ── Media ──────────────────────────────────────────────────────────────────
@@ -61,12 +57,12 @@ export default function CandidateInterviewPage() {
 
   // ── Session ────────────────────────────────────────────────────────────────
   const [sessionDuration, setSessionDuration] = useState(0);
-  const [questionIndex, setQuestionIndex] = useState(0);
-  const [questions] = useState(DEMO_QUESTIONS);
+  const [activeQuestion, setActiveQuestion] = useState(null);
 
   // ── Proctoring (candidate-visible warnings) ────────────────────────────────
   const [tabWarning, setTabWarning] = useState(false);
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
+  const [typingWarning, setTypingWarning] = useState(false);
 
   // ── Voice recording ────────────────────────────────────────────────────────
   const [recState, setRecState] = useState(REC.IDLE);
@@ -74,11 +70,65 @@ export default function CandidateInterviewPage() {
   const [transcript, setTranscript] = useState('');
   const [recError, setRecError] = useState('');
   const [submittedAnswers, setSubmittedAnswers] = useState([]);
+  const [awaitingNextQuestion, setAwaitingNextQuestion] = useState(false);
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const mediaRecorderRef = useRef(null);
+  const recordingQuestionRef = useRef(null);
+  const lastQuestionVersionRef = useRef(0);
   const chunksRef = useRef([]);
   const recTimerRef = useRef(null);
   const sessionTimerRef = useRef(null);
+  const typingBurstRef = useRef({ count: 0, startedAt: null, timer: null });
+  const handleGazeStatus = useCallback((assessment) => setGazeAssessment(assessment), []);
+
+  useEffect(() => {
+    const sessionId = new URLSearchParams(window.location.search).get('session_id');
+    if (!sessionId) {
+      setSessionError('This invitation is missing its session ID. Ask the hiring team for the interview link.');
+      setPhase('invalid');
+      return;
+    }
+    sessionIdRef.current = sessionId;
+    getInterviewSession(sessionId)
+      .then((existing) => {
+        if (existing.session_id !== sessionId && existing.id !== sessionId) {
+          throw new Error('The backend returned a different session than the invitation requested.');
+        }
+        if (!existing.candidate_id) throw new Error('This interview session has no associated candidate.');
+        if (existing.status !== 'active') throw new Error(`This interview session is ${existing.status || 'unavailable'} and cannot be joined.`);
+        setSession(existing);
+        setActiveQuestion(existing.current_question || null);
+        lastQuestionVersionRef.current = existing.current_question?.version || 0;
+        setPhase('consent');
+      })
+      .catch((error) => {
+        setSessionError(error.message || 'Could not validate this interview invitation.');
+        setPhase('invalid');
+      });
+  }, []);
+
+  useEffect(() => {
+    if (phase !== 'active' || !sessionIdRef.current) return undefined;
+    let mounted = true;
+    const refreshQuestion = async () => {
+      try {
+        const latest = await getInterviewSession(sessionIdRef.current);
+        if (!mounted || !latest.current_question) return;
+        if (latest.current_question.version > lastQuestionVersionRef.current) {
+          lastQuestionVersionRef.current = latest.current_question.version;
+          setActiveQuestion(latest.current_question);
+          setAwaitingNextQuestion(false);
+          setSubmitError('');
+        }
+      } catch {
+        // Keep the last received question visible through transient polling errors.
+      }
+    };
+    const interval = setInterval(refreshQuestion, 1200);
+    return () => { mounted = false; clearInterval(interval); };
+  }, [phase]);
 
   // ── Attach stream to video ──────────────────────────────────────────────
   useEffect(() => {
@@ -99,6 +149,25 @@ export default function CandidateInterviewPage() {
   useEffect(() => {
     if (phase !== 'active') return;
 
+    const flushTypingBurst = () => {
+      const burst = typingBurstRef.current;
+      if (burst.timer) clearTimeout(burst.timer);
+      burst.timer = null;
+      if (!burst.count) return;
+
+      api.interviews.recordEvent(sessionIdRef.current, {
+        event_type: 'typing_detected',
+        timestamp: new Date().toISOString(),
+        details: {
+          key_count: burst.count,
+          duration_ms: Date.now() - burst.startedAt,
+          source: 'candidate_interview_page',
+        },
+      }).catch(() => {});
+      burst.count = 0;
+      burst.startedAt = null;
+    };
+
     const onVisibility = () => {
       if (document.hidden) {
         setTabSwitchCount((n) => n + 1);
@@ -114,10 +183,21 @@ export default function CandidateInterviewPage() {
 
     const onBlur = () => {
       api.interviews.recordEvent(sessionIdRef.current, {
-        event_type: 'window_blur',
+        event_type: 'focus_loss',
         timestamp: new Date().toISOString(),
         details: { role: 'candidate' },
       }).catch(() => {});
+      flushTypingBurst();
+    };
+
+    const onKeyDown = (event) => {
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.key.length !== 1) return;
+      const burst = typingBurstRef.current;
+      if (!burst.count) burst.startedAt = Date.now();
+      burst.count += 1;
+      setTypingWarning(true);
+      if (burst.timer) clearTimeout(burst.timer);
+      burst.timer = setTimeout(flushTypingBurst, 1200);
     };
 
     const onPaste = (e) => {
@@ -133,10 +213,13 @@ export default function CandidateInterviewPage() {
 
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('blur', onBlur);
+    document.addEventListener('keydown', onKeyDown);
     document.addEventListener('paste', onPaste);
     return () => {
+      flushTypingBurst();
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('blur', onBlur);
+      document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('paste', onPaste);
     };
   }, [phase]);
@@ -145,6 +228,11 @@ export default function CandidateInterviewPage() {
   // PERMISSION FLOW — Camera & Microphone
   // ─────────────────────────────────────────────────────────────────────────
   const handleLaunchSession = async () => {
+    if (!session || !sessionIdRef.current) {
+      setSessionError('A valid HR-created interview session is required before joining.');
+      setPhase('invalid');
+      return;
+    }
     setPhase('requesting');
     setPermError('');
     try {
@@ -172,6 +260,11 @@ export default function CandidateInterviewPage() {
     setRecError('');
     setTranscript('');
     chunksRef.current = [];
+    if (!activeQuestion) {
+      setRecError('Waiting for the interviewer to send a question.');
+      setRecState(REC.ERROR);
+      return;
+    }
 
     try {
       let stream = mediaStream;
@@ -180,9 +273,23 @@ export default function CandidateInterviewPage() {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
 
-      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length === 0) throw new Error('No microphone audio track is available.');
+      // The shared interview stream also contains the camera track. Keep that
+      // stream alive for gaze tracking, but give MediaRecorder audio only.
+      const audioStream = new MediaStream(audioTracks);
+      if (!activeQuestion) throw new Error('Waiting for the interviewer to send a question.');
+      recordingQuestionRef.current = activeQuestion;
+      const audioMimeType = 'audio/webm;codecs=opus';
+      const mr = new MediaRecorder(
+        audioStream,
+        MediaRecorder.isTypeSupported(audioMimeType) ? { mimeType: audioMimeType } : undefined
+      );
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.onstop = () => processAudio();
+      mr.onstop = async () => {
+        await processAudio();
+        if (!mediaStream) stream.getTracks().forEach((track) => track.stop());
+      };
       mr.start(250);
       mediaRecorderRef.current = mr;
 
@@ -194,7 +301,7 @@ export default function CandidateInterviewPage() {
       setRecError(denied ? 'Microphone access denied.' : `Recording error: ${err.message}`);
       setRecState(REC.ERROR);
     }
-  }, [mediaStream]);
+  }, [activeQuestion, mediaStream]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current.stop();
@@ -203,39 +310,57 @@ export default function CandidateInterviewPage() {
   }, []);
 
   const processAudio = async () => {
-    // BACKEND INTEGRATION POINT: POST /api/interviews/{sessionId}/audio (Whisper STT)
-    await new Promise((r) => setTimeout(r, 1400));
-
-    // Dynamic mock transcript based on current question
-    const mockResponses = [
-      "I have five years of engineering experience focusing on building high-performance web applications with React, Next.js, and TypeScript. In my last position, I led our architecture transition to micro-frontends, which reduced build times and allowed multiple teams to deploy independently.",
-      "The project I am most proud of is a high-throughput payment processing dashboard. What made it particularly rewarding was solving complex state synchronization issues when processing concurrent transaction events.",
-      "A challenging technical issue I resolved was an elusive race condition causing intermittent session drops during peak load. By profiling distributed trace logs, I identified duplicate lock contention on our Redis cluster and refactored the mutex acquisition logic.",
-      "When we disagreed on an API design approach, I arranged a small benchmarking experiment rather than debating abstractly. We tested both REST and GraphQL payloads under realistic mobile network latency, which gave the team concrete performance data to align on.",
-    ];
-
-    const text = mockResponses[questionIndex % mockResponses.length] || mockResponses[0];
-    setTranscript(text);
-    setRecState(REC.READY);
+    try {
+      const currentQuestion = recordingQuestionRef.current || activeQuestion;
+      const audioType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+      const audioBlob = new Blob(chunksRef.current, { type: audioType });
+      if (!audioBlob.size) throw new Error('No audio was captured. Check microphone access and try again.');
+      const result = await uploadAudioForTranscription(
+        sessionIdRef.current,
+        audioBlob,
+        currentQuestion?.question_id
+      );
+      setTranscript(result.transcript_text || '');
+      setRecState(REC.READY);
+    } catch (error) {
+      setRecError(error.message || 'Could not transcribe this recording.');
+      setRecState(REC.ERROR);
+    }
   };
 
-  const submitAnswer = () => {
-    const current = questions[questionIndex];
-    setSubmittedAnswers((prev) => [
-      ...prev,
-      { question: current.text, answer: transcript, questionId: current.id, timestamp: new Date().toLocaleTimeString() },
-    ]);
-
-    // BACKEND INTEGRATION: POST /api/interviews/{sessionId}/answers
-    if (questionIndex < questions.length - 1) {
-      setQuestionIndex((i) => i + 1);
-    } else {
-      endSession();
+  const submitAnswer = async () => {
+    const current = recordingQuestionRef.current || activeQuestion;
+    if (!current) {
+      setSubmitError('Waiting for the interviewer to send a question.');
+      return;
     }
+    setIsSubmittingAnswer(true);
+    setSubmitError('');
+    try {
+      const savedAnswer = await submitInterviewAnswer(sessionIdRef.current, {
+        question_id: current.question_id,
+        question: current.question,
+        category: current.category,
+        transcript,
+      });
+      setSubmittedAnswers((prev) => [...prev, {
+        question: current.question,
+        answer: transcript,
+        questionId: current.question_id,
+        timestamp: new Date(savedAnswer.submitted_at).toLocaleTimeString(),
+        analysisStatus: savedAnswer.analysis_status,
+      }]);
 
-    setTranscript('');
-    setRecState(REC.IDLE);
-    setRecTimer(0);
+      setTranscript('');
+      setRecState(REC.IDLE);
+      setRecTimer(0);
+      setAwaitingNextQuestion(true);
+      recordingQuestionRef.current = null;
+    } catch (error) {
+      setSubmitError(error.message || 'Could not submit your answer. Please retry.');
+    } finally {
+      setIsSubmittingAnswer(false);
+    }
   };
 
   const endSession = () => {
@@ -245,6 +370,14 @@ export default function CandidateInterviewPage() {
   };
 
   const formatTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+  if (phase === 'validating') {
+    return <div className="max-w-md mx-auto text-center py-24 space-y-3"><Loader2 className="w-10 h-10 animate-spin text-indigo-600 mx-auto" /><h2 className="text-lg font-semibold text-slate-800">Validating interview invitation</h2><p className="text-sm text-slate-500">Checking the session created by the hiring team…</p></div>;
+  }
+
+  if (phase === 'invalid') {
+    return <div className="max-w-md mx-auto py-24"><Card className="p-8 text-center space-y-4 border-rose-200"><XCircle className="w-12 h-12 text-rose-600 mx-auto" /><h2 className="text-lg font-semibold text-slate-900">Unable to join interview</h2><p role="alert" className="text-sm text-slate-600">{sessionError}</p><Link href="/candidate" className="inline-block text-sm font-medium text-indigo-600 hover:underline">Return to Candidate Portal</Link></Card></div>;
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER: Consent Screen
@@ -258,6 +391,7 @@ export default function CandidateInterviewPage() {
           </Link>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">AI Technical Interview Room</h1>
           <p className="text-sm text-slate-500 mt-1">TrustHire Proctored Candidate Assessment Environment</p>
+          <p className="text-xs text-slate-500 mt-2">Interview for candidate {session?.candidate_id} · Session #{sessionIdRef.current?.slice(-6)}</p>
         </div>
 
         <Card className="p-8 space-y-6 shadow-sm">
@@ -288,7 +422,7 @@ export default function CandidateInterviewPage() {
           </div>
 
           <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-xs text-indigo-800">
-            <strong>Format:</strong> {questions.length} questions · Speak answers aloud · Preview transcription before submitting
+            <strong>Format:</strong> Live interviewer-led questions · Speak answers aloud · Preview transcription before submitting
           </div>
 
           <Button
@@ -381,8 +515,10 @@ export default function CandidateInterviewPage() {
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER: Active Interview Room
   // ─────────────────────────────────────────────────────────────────────────
-  const currentQ = questions[questionIndex];
-  const progress = ((questionIndex) / questions.length) * 100;
+  const currentQ = activeQuestion;
+  const progress = session?.total_questions
+    ? Math.min(100, (submittedAnswers.length / session.total_questions) * 100)
+    : 0;
 
   return (
     <div className="max-w-6xl mx-auto space-y-4 pb-8">
@@ -403,8 +539,18 @@ export default function CandidateInterviewPage() {
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             Session Live
           </div>
+
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${
+            gazeAssessment.status === 'high' ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+              : gazeAssessment.status === 'low' ? 'bg-rose-50 border-rose-200 text-rose-700'
+              : 'bg-slate-50 border-slate-200 text-slate-600'
+          }`}>
+            Eye check: {gazeAssessment.status === 'high' ? 'Looking at screen' : gazeAssessment.status === 'low' ? 'Look toward screen' : gazeAssessment.status === 'error' ? 'Unavailable' : 'Starting'}
+          </div>
         </div>
       </div>
+
+      <EyeGazeTracker stream={mediaStream} sessionId={sessionIdRef.current} onStatus={handleGazeStatus} />
 
       {/* Tab-switch warning notice (Visible to candidate) */}
       {tabWarning && (
@@ -419,11 +565,18 @@ export default function CandidateInterviewPage() {
         </div>
       )}
 
+      {typingWarning && (
+        <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 text-amber-900 text-xs">
+          <span><strong>Typing detected:</strong> Keyboard input is logged as a typing event; typed content is not recorded.</span>
+          <button onClick={() => setTypingWarning(false)} className="text-amber-700 hover:text-amber-900 font-bold ml-2" aria-label="Dismiss typing warning">×</button>
+        </div>
+      )}
+
       {/* Progress Bar */}
       <div>
         <div className="flex justify-between text-xs text-slate-400 mb-1">
-          <span>Question {questionIndex + 1} of {questions.length}</span>
-          <span className="capitalize font-medium text-indigo-600">{currentQ.category}</span>
+          <span>Question {currentQ?.version || 1} · {submittedAnswers.length} answered</span>
+          <span className="capitalize font-medium text-indigo-600">{currentQ?.category || 'Waiting'}</span>
         </div>
         <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
           <div className="h-full bg-indigo-600 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
@@ -438,14 +591,14 @@ export default function CandidateInterviewPage() {
           <Card className="p-6 shadow-xs border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-                Question {questionIndex + 1}: {currentQ.category}
+                Question {currentQ?.version || 1}: {currentQ?.category || 'Waiting'}
               </span>
               <span className="text-xs text-slate-400 font-mono">
-                {questionIndex + 1}/{questions.length}
+                {submittedAnswers.length} answered
               </span>
             </div>
             <p className="text-base text-slate-800 leading-relaxed font-medium">
-              {currentQ.text}
+              {currentQ?.question || 'Waiting for the interviewer to send the next question…'}
             </p>
           </Card>
 
@@ -461,16 +614,24 @@ export default function CandidateInterviewPage() {
 
             <CardContent className="p-5 space-y-4">
               {/* Idle State */}
-              {recState === REC.IDLE && (
+              {recState === REC.IDLE && awaitingNextQuestion && (
+                <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-center">
+                  <CheckCircle2 className="mx-auto mb-2 h-5 w-5 text-emerald-600" />
+                  <p className="text-sm font-semibold text-emerald-800">Answer submitted</p>
+                  <p className="mt-1 text-xs text-emerald-700">Your transcript is with the hiring team. Waiting for their next question.</p>
+                </div>
+              )}
+              {recState === REC.IDLE && !awaitingNextQuestion && (
                 <div className="text-center py-6 space-y-3">
                   <button
                     onClick={startRecording}
+                    disabled={!activeQuestion}
                     className="w-18 h-18 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center mx-auto shadow-md transition-all hover:scale-105 active:scale-95"
                     aria-label="Start recording answer"
                   >
                     <Mic className="w-8 h-8" />
                   </button>
-                  <p className="text-xs text-slate-500">Click to start recording your response</p>
+                  <p className="text-xs text-slate-500">{activeQuestion ? 'Click to start recording your response' : 'Waiting for a question from the interviewer…'}</p>
                 </div>
               )}
 
@@ -561,12 +722,14 @@ export default function CandidateInterviewPage() {
                       variant="primary"
                       size="sm"
                       onClick={submitAnswer}
+                      disabled={isSubmittingAnswer || transcript.trim().length < 5}
                       className="flex-1 font-semibold"
                       icon={Send}
                     >
-                      {questionIndex < questions.length - 1 ? 'Submit & Next Question' : 'Submit & Finish'}
+                      {isSubmittingAnswer ? 'Submitting…' : 'Submit Answer'}
                     </Button>
                   </div>
+                  {submitError && <p role="alert" className="text-xs text-rose-700">{submitError}</p>}
                 </div>
               )}
             </CardContent>

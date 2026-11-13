@@ -31,76 +31,10 @@ import EndInterviewModal from '@/components/interview/EndInterviewModal';
 import InterviewCompletion from '@/components/interview/InterviewCompletion';
 
 // Interview API & Mock Data
-import { createInterviewSession, recordIntegrityEvent, analyzeResponseForAI } from '@/lib/interview/api';
-import { MOCK_RESUME_DATA, RESUME_QUESTION_TEMPLATES, GENERIC_QUESTIONS } from '@/lib/interview/mockData';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Sample Candidate Spoken Responses for Live Demo:
-// - Sarah Chen: High Trust (18% AI score - Natural human speech)
-// - Marcus Rivera: High Risk (88% AI score - Flagged as AI/LLM scripted)
-// - Priya Sharma: Moderate Trust (42% AI score - Review required)
-// ─────────────────────────────────────────────────────────────────────────────
-const CANDIDATE_SAMPLE_ANSWERS = {
-  'cand-sarah-001': [
-    {
-      text: "React reconciliation relies on virtual DOM diffing with an O(n) heuristic. By comparing tree levels and using stable keys, React avoids tearing down entire component subtrees. In my last project at TechFlow, optimizing component memoization and key assignments decreased our page re-render latency by approximately 40%.",
-      aiScore: 18,
-      signals: {
-        vocabulary: 'Natural colloquial with specific project context',
-        fillers: 'Natural conversational cadence & pauses',
-        uniformity: 'Varied human sentence structure',
-      },
-    },
-    {
-      text: "When choosing between Redux and Zustand, I look at team scale and domain complexity. For a large enterprise platform with time-travel debugging requirements, Redux Toolkit is solid. But for most micro-frontends, Zustand gives us slice-based subscriptions without boilerplate overhead.",
-      aiScore: 22,
-      signals: {
-        vocabulary: 'Conversational engineering phrasing',
-        fillers: 'Natural hesitation words present',
-        uniformity: 'Organic variability',
-      },
-    },
-  ],
-  'cand-marcus-002': [
-    {
-      text: "In order to optimize distributed system architecture, one must consider horizontal scalability, asynchronous event loops, and non-blocking I/O. Redis serves as an in-memory data store providing sub-millisecond latency for cache invalidation strategies while PostgreSQL maintains ACID compliance across relational schemas.",
-      aiScore: 88,
-      signals: {
-        vocabulary: 'Artificially elevated textbook prose',
-        fillers: '0 fillers detected (Unnatural fluency)',
-        uniformity: 'Uniform syntactic length matching GPT-4 output',
-      },
-    },
-    {
-      text: "Kubernetes orchestration requires ingress controllers configured with mutual TLS authentication. Container pods are scheduled across cluster worker nodes using affinity rules and resource limits to ensure zero-downtime rolling deployments.",
-      aiScore: 92,
-      signals: {
-        vocabulary: 'Rigid bulleted monologue structure',
-        fillers: 'Completely devoid of conversational pauses',
-        uniformity: 'Identical clause lengths',
-      },
-    },
-  ],
-  'cand-priya-003': [
-    {
-      text: "For asynchronous task queues, I configure Celery with Redis or RabbitMQ as the message broker. We set worker concurrency based on CPU cores for compute-heavy tasks, and use gevent or eventlet if we're mostly waiting on network I/O calls.",
-      aiScore: 42,
-      signals: {
-        vocabulary: 'Technical terminology with some memorized phrasing',
-        fillers: 'Occasional pauses detected',
-        uniformity: 'Moderately structured',
-      },
-    },
-  ],
-};
-
-const DEFAULT_QUESTIONS = [
-  { text: "Tell me about yourself — specifically your engineering background and what brought you to apply for this role.", category: 'opening' },
-  { text: "Looking at your resume, what project are you most proud of and why?", category: 'resume' },
-  { text: "Walk me through how React reconciliation works. How does the virtual DOM diffing algorithm decide what to re-render?", category: 'technical' },
-  { text: "How have you handled state management at scale? Compare Redux, Zustand, and React Context.", category: 'technical' },
-  { text: "Tell me about a time you had to resolve a high-severity production outage under time pressure.", category: 'behavioural' },
-];
+import {
+  createInterviewSession, getInterviewSession, recordIntegrityEvent,
+  dispatchInterviewQuestion, saveInterviewQuestionQueue, generateQuestionsFromResume,
+} from '@/lib/interview/api';
 
 const COPILOT_TABS = [
   { id: 'resume',     label: 'Resume Scanner', Icon: FileText },
@@ -121,7 +55,12 @@ export default function HRInterviewMonitorPage() {
   const [isMonitorLaunched, setIsMonitorLaunched] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
   const [sessionDuration, setSessionDuration] = useState(0);
-  const [sessionId, setSessionId] = useState(`session-${candidateId}-${Date.now().toString().slice(-6)}`);
+  const [sessionId, setSessionId] = useState(null);
+  const [launchError, setLaunchError] = useState('');
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const invitationUrl = sessionId && typeof window !== 'undefined'
+    ? `${window.location.origin}/candidate/interview?session_id=${encodeURIComponent(sessionId)}`
+    : '';
   const [completed, setCompleted] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
 
@@ -130,9 +69,14 @@ export default function HRInterviewMonitorPage() {
   const [cameraError, setCameraError] = useState(null);
 
   // ── Q&A & Candidate Response Review ───────────────────────────────────────
-  const [currentQuestion, setCurrentQuestion] = useState(DEFAULT_QUESTIONS[0].text);
-  const [currentCategory, setCurrentCategory] = useState(DEFAULT_QUESTIONS[0].category);
+  const [currentQuestion, setCurrentQuestion] = useState('Tell me about yourself — specifically your background and what brought you to apply for this role.');
+  const [currentCategory, setCurrentCategory] = useState('opening');
   const [questionIndex, setQuestionIndex] = useState(0);
+  const [questionQueue, setQuestionQueue] = useState([]);
+  const [questionSuggestions, setQuestionSuggestions] = useState([]);
+  const [questionError, setQuestionError] = useState('');
+  const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
+  const [isDispatchingQuestion, setIsDispatchingQuestion] = useState(false);
   const [history, setHistory] = useState([]);
   const [isCandidateSpeaking, setIsCandidateSpeaking] = useState(false);
   const [latestAnswer, setLatestAnswer] = useState(null);
@@ -140,29 +84,124 @@ export default function HRInterviewMonitorPage() {
 
   // ── Integrity monitoring ──────────────────────────────────────────────────
   const [tabSwitches, setTabSwitches] = useState(0);
+  const [typingDetections, setTypingDetections] = useState(0);
   const [focusLosses, setFocusLosses] = useState(0);
   const [pasteEvents, setPasteEvents] = useState(0);
   const [gazeAwayCount, setGazeAwayCount] = useState(0);
+  const [gazeAssessment, setGazeAssessment] = useState({ status: 'unknown', attentionPct: null, faceDetected: null });
   const [integrityEvents, setIntegrityEvents] = useState([]);
   const [screenSharing, setScreenSharing] = useState(false);
   const [copilotTab, setCopilotTab] = useState('resume');
 
   const timerRef = useRef(null);
+  const lastGazeStatusRef = useRef(null);
+  const lastAnswerSignatureRef = useRef(null);
+  const lastQuestionVersionRef = useRef(0);
+  const lastArchivedAnswerIdRef = useRef(null);
+
+  useEffect(() => {
+    if (!isMonitorLaunched || !sessionId) return undefined;
+    let mounted = true;
+
+    const refreshGazeAssessment = async () => {
+      try {
+        const session = await getInterviewSession(sessionId);
+        if (!mounted) return;
+        const latestSubmittedAnswer = session.answers?.[session.answers.length - 1];
+        const answerSignature = latestSubmittedAnswer
+          ? `${latestSubmittedAnswer.id}:${latestSubmittedAnswer.analysis_status || 'pending'}:${latestSubmittedAnswer.ai_score ?? ''}`
+          : null;
+        if (latestSubmittedAnswer && answerSignature !== lastAnswerSignatureRef.current) {
+          lastAnswerSignatureRef.current = answerSignature;
+          setLatestAnswer({
+            id: latestSubmittedAnswer.id,
+            text: latestSubmittedAnswer.transcript,
+            question: latestSubmittedAnswer.question,
+            aiScore: latestSubmittedAnswer.ai_score,
+            verdict: latestSubmittedAnswer.verdict,
+            flaggedForReview: latestSubmittedAnswer.flagged_for_review,
+            confidence: latestSubmittedAnswer.confidence,
+            analysisSource: latestSubmittedAnswer.analysis_source,
+            modelError: latestSubmittedAnswer.model_error,
+            reasons: latestSubmittedAnswer.reasons,
+            signals: latestSubmittedAnswer.signals,
+            note: latestSubmittedAnswer.note,
+            analysisStatus: latestSubmittedAnswer.analysis_status || 'complete',
+            timestamp: new Date(latestSubmittedAnswer.submitted_at).toLocaleTimeString(),
+          });
+          setCurrentQuestion(latestSubmittedAnswer.question);
+          setCurrentCategory(latestSubmittedAnswer.category || 'general');
+          setIsCandidateSpeaking(false);
+        }
+        const activeQuestion = session.current_question;
+        if (activeQuestion && activeQuestion.version > lastQuestionVersionRef.current) {
+          lastQuestionVersionRef.current = activeQuestion.version;
+          setCurrentQuestion(activeQuestion.question);
+          setCurrentCategory(activeQuestion.category || 'general');
+          setQuestionIndex(activeQuestion.version);
+          setIsCandidateSpeaking(false);
+        }
+        const sessionEvents = session.events || [];
+        const tabEvents = sessionEvents.filter((event) => event.event_type === 'tab_switch');
+        const typingEvents = sessionEvents.filter((event) => event.event_type === 'typing_detected');
+        const focusEvents = sessionEvents.filter((event) => ['focus_loss', 'window_blur'].includes(event.event_type));
+        const pasteEvents = sessionEvents.filter((event) => ['large_paste', 'copy_paste'].includes(event.event_type));
+        setTabSwitches(tabEvents.length);
+        setTypingDetections(typingEvents.length);
+        setFocusLosses(focusEvents.length);
+        setPasteEvents(pasteEvents.length);
+        setIntegrityEvents([...sessionEvents].reverse().map((event) => ({
+          eventType: event.event_type,
+          severity: event.event_type === 'ai_response_suspected'
+            ? 'high'
+            : event.event_type === 'tab_switch' || event.event_type === 'large_paste'
+            ? 'high'
+            : event.event_type === 'typing_detected'
+              ? 'medium'
+              : event.details?.status === 'low' ? 'high' : 'low',
+          timestamp: event.timestamp,
+          metadata: event.details,
+        })));
+        const updatedAt = session.gaze_updated_at ? Date.parse(session.gaze_updated_at) : 0;
+        const isFresh = updatedAt > 0 && Date.now() - updatedAt <= 10000;
+        const status = isFresh ? (session.gaze_status || 'unknown') : 'unknown';
+        const attentionPct = isFresh ? session.gaze_attention_score : null;
+        setGazeAssessment({
+          status,
+          attentionPct,
+          faceDetected: isFresh ? session.gaze_face_detected : null,
+          updatedAt: isFresh ? session.gaze_updated_at : null,
+        });
+
+        if (isFresh && status !== lastGazeStatusRef.current) {
+          lastGazeStatusRef.current = status;
+          if (status === 'low') setGazeAwayCount((count) => count + 1);
+          if (status === 'high' || status === 'low') {
+            setIntegrityEvents((events) => [{
+              eventType: `gaze_${status}`,
+              severity: status === 'low' ? 'high' : 'low',
+              timestamp: session.gaze_updated_at,
+              metadata: { attention_score: attentionPct, face_detected: session.gaze_face_detected },
+            }, ...events]);
+          }
+        }
+      } catch {
+        // A missed poll keeps the last confirmed status until its freshness window expires.
+      }
+    };
+
+    refreshGazeAssessment();
+    const interval = setInterval(refreshGazeAssessment, 2000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [isMonitorLaunched, sessionId]);
 
   // ── Load candidate ────────────────────────────────────────────────────────
   useEffect(() => {
     const found = DEMO_CANDIDATES.find((c) => c.id === candidateId) || DEMO_CANDIDATES[0];
     setCandidate(found);
-
-    const sample = (CANDIDATE_SAMPLE_ANSWERS[candidateId] || CANDIDATE_SAMPLE_ANSWERS['cand-sarah-001'])[0];
-    if (sample) {
-      setLatestAnswer({
-        text: sample.text,
-        aiScore: sample.aiScore,
-        signals: sample.signals,
-        timestamp: 'Just now',
-      });
-    }
   }, [candidateId]);
 
   // ── Timer loop ────────────────────────────────────────────────────────────
@@ -187,8 +226,23 @@ export default function HRInterviewMonitorPage() {
   const handleLaunchMonitor = async () => {
     setIsLaunching(true);
     setCameraError(null);
+    setLaunchError('');
 
     try {
+      const session = await createInterviewSession(candidateId);
+      const backendSessionId = session.session_id || session.id;
+      if (!backendSessionId) throw new Error('The backend did not return an interview session ID.');
+      setSessionId(backendSessionId);
+      const initialSession = await getInterviewSession(backendSessionId);
+      const initialQueue = initialSession.question_queue || [];
+      setQuestionQueue(initialQueue);
+      if (initialSession.current_question) {
+        setCurrentQuestion(initialSession.current_question.question);
+        setCurrentCategory(initialSession.current_question.category || 'opening');
+        setQuestionIndex(initialSession.current_question.version || 1);
+        lastQuestionVersionRef.current = initialSession.current_question.version || 1;
+      }
+
       let stream = null;
       if (navigator?.mediaDevices?.getUserMedia) {
         try {
@@ -203,10 +257,7 @@ export default function HRInterviewMonitorPage() {
         }
       }
 
-      const session = await createInterviewSession(candidateId);
-      if (session?.session_id) setSessionId(session.session_id);
-
-      addIntegrityEvent({
+      recordIntegrityEvent(backendSessionId, {
         eventType: 'monitor_launched',
         severity: 'low',
         timestamp: new Date().toISOString(),
@@ -216,60 +267,105 @@ export default function HRInterviewMonitorPage() {
       setIsMonitorLaunched(true);
     } catch (err) {
       console.error('Launch monitor error:', err);
-      setIsMonitorLaunched(true);
+      setLaunchError(err.message || 'Could not create the interview session. Please try again.');
     } finally {
       setIsLaunching(false);
+    }
+  };
+
+  const copyInvitation = async () => {
+    if (!invitationUrl) return;
+    try {
+      await navigator.clipboard.writeText(invitationUrl);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 1800);
+    } catch {
+      setLaunchError('Could not copy the invitation link. Please copy it from the field.');
     }
   };
 
   // ─────────────────────────────────────────────────────────────────────────
   // Dispatch Question to Candidate
   // ─────────────────────────────────────────────────────────────────────────
-  const handleDispatchQuestion = (questionText, category = 'custom') => {
-    if (!questionText.trim()) return;
+  const handleDispatchQuestion = async (questionText, category = 'custom', questionId) => {
+    const text = typeof questionText === 'object' ? questionText.question_text || questionText.question : questionText;
+    const resolvedCategory = typeof questionText === 'object' ? questionText.category || category : category;
+    const resolvedId = typeof questionText === 'object' ? questionText.question_id : questionId;
+    if (!text?.trim() || !sessionId || isDispatchingQuestion) return;
+    setIsDispatchingQuestion(true);
+    setQuestionError('');
 
-    if (latestAnswer) {
-      setHistory((prev) => [
-        ...prev,
-        {
-          question: currentQuestion,
+    try {
+      const dispatched = await dispatchInterviewQuestion(sessionId, {
+        question_id: resolvedId || `q-${Date.now()}`,
+        question: text.trim(),
+        category: resolvedCategory,
+      });
+      if (latestAnswer && lastArchivedAnswerIdRef.current !== latestAnswer.id) {
+        lastArchivedAnswerIdRef.current = latestAnswer.id;
+        setHistory((prev) => [...prev, {
+          question: latestAnswer.question || currentQuestion,
           category: currentCategory,
           answer: latestAnswer.text,
           aiScore: latestAnswer.aiScore,
-          aiFlag: latestAnswer.aiScore > 60,
+          aiFlag: latestAnswer.flaggedForReview,
           timestamp: new Date().toISOString(),
-        },
-      ]);
-    }
-
-    setCurrentQuestion(questionText);
-    setCurrentCategory(category);
-    setQuestionIndex((i) => i + 1);
-    setLatestAnswer(null);
-    setCustomQuestionInput('');
-
-    // Simulate candidate microphone receiving & answering
-    setIsCandidateSpeaking(true);
-    setTimeout(() => {
-      setIsCandidateSpeaking(false);
-      const pool = CANDIDATE_SAMPLE_ANSWERS[candidateId] || CANDIDATE_SAMPLE_ANSWERS['cand-sarah-001'];
-      const nextSample = pool[questionIndex % pool.length] || pool[0];
-      setLatestAnswer({
-        text: nextSample.text,
-        aiScore: nextSample.aiScore,
-        signals: nextSample.signals,
-        timestamp: 'Just now',
-      });
-
-      if (nextSample.aiScore > 60) {
-        addIntegrityEvent({
-          eventType: 'ai_response_suspected',
-          severity: 'high',
-          timestamp: new Date().toISOString(),
-          metadata: { ai_score: nextSample.aiScore, question: questionText.slice(0, 50) },
-        });
+        }]);
       }
-    }, 2600);
+      setCurrentQuestion(dispatched.question);
+      setCurrentCategory(dispatched.category);
+      setQuestionIndex(dispatched.version);
+      lastQuestionVersionRef.current = dispatched.version;
+      if (!questionQueue.some((item) => item.question_id === dispatched.question_id)) {
+        await persistQuestionQueue([...questionQueue, {
+          question_id: dispatched.question_id,
+          question: dispatched.question,
+          category: dispatched.category,
+        }]);
+      }
+      setCustomQuestionInput('');
+      setIsCandidateSpeaking(false);
+    } catch (error) {
+      setQuestionError(error.message || 'Could not send the question to the candidate.');
+    } finally {
+      setIsDispatchingQuestion(false);
+    }
+  };
+
+  const persistQuestionQueue = async (nextQueue) => {
+    setQuestionQueue(nextQueue);
+    if (!sessionId) return;
+    try {
+      await saveInterviewQuestionQueue(sessionId, nextQueue);
+      setQuestionError('');
+    } catch (error) {
+      setQuestionError(error.message || 'Could not save the question order.');
+    }
+  };
+
+  const moveQueuedQuestion = (index, offset) => {
+    const nextIndex = index + offset;
+    if (nextIndex < 0 || nextIndex >= questionQueue.length) return;
+    const nextQueue = [...questionQueue];
+    [nextQueue[index], nextQueue[nextIndex]] = [nextQueue[nextIndex], nextQueue[index]];
+    persistQuestionQueue(nextQueue);
+  };
+
+  const generateGemmaQuestion = async () => {
+    if (!sessionId || isGeneratingQuestion) return;
+    setIsGeneratingQuestion(true);
+    setQuestionError('');
+    try {
+      const generated = await generateQuestionsFromResume(sessionId, {});
+      const question = generated[0];
+      setQuestionSuggestions((items) => [question, ...items]);
+      const queued = { question_id: question.question_id, question: question.question_text, category: question.category };
+      await persistQuestionQueue([...questionQueue, queued]);
+    } catch (error) {
+      setQuestionError(error.message || 'Gemma could not generate a question. Check that the local model is running.');
+    } finally {
+      setIsGeneratingQuestion(false);
+    }
   };
 
   const handleEndSession = () => {
@@ -286,6 +382,7 @@ export default function HRInterviewMonitorPage() {
     setHistory([]);
     setIntegrityEvents([]);
     setTabSwitches(0);
+    setTypingDetections(0);
     setGazeAwayCount(0);
     setLatestAnswer(null);
   };
@@ -297,8 +394,8 @@ export default function HRInterviewMonitorPage() {
   };
 
   // Integrity assessment
-  const isCritical = tabSwitches >= 5 || gazeAwayCount >= 5 || history.some((h) => h.aiScore > 75);
-  const isWarning = tabSwitches >= 2 || gazeAwayCount >= 2 || history.some((h) => h.aiScore > 40);
+  const isCritical = tabSwitches >= 5 || gazeAwayCount >= 5;
+  const isWarning = tabSwitches >= 2 || gazeAwayCount >= 2 || latestAnswer?.flaggedForReview || history.some((h) => h.aiFlag || h.aiScore >= 40);
   const overallRisk = isCritical ? 'critical' : isWarning ? 'warning' : 'clean';
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -362,6 +459,7 @@ export default function HRInterviewMonitorPage() {
               >
                 {isLaunching ? 'Connecting Monitor…' : 'Launch Interview Monitor'}
               </Button>
+              {launchError && <p role="alert" className="max-w-sm text-xs text-rose-700">{launchError}</p>}
               <span className="text-[11px] text-slate-400 flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                 Live Camera & Eye Gaze Proctoring Ready
@@ -392,7 +490,7 @@ export default function HRInterviewMonitorPage() {
                   Candidate Interview Room
                 </span>
                 <Link
-                  href="/candidate/interview"
+                  href={invitationUrl || '/candidate/interview'}
                   target="_blank"
                   className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline font-semibold"
                 >
@@ -400,14 +498,18 @@ export default function HRInterviewMonitorPage() {
                 </Link>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
-                The candidate joins at <code className="bg-white px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-700 font-mono text-[11px]">/candidate/interview</code>.
+                The candidate joins through the invitation URL for backend session <code className="bg-white px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-700 font-mono text-[11px]">{sessionId || 'created when launched'}</code>.
                 They see the HR interviewer's camera tile, read dispatched questions, and record answers via microphone.
               </p>
               <div className="pt-1">
                 <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-mono font-medium">
-                  Direct Endpoint: /candidate/interview
+                  {sessionId ? 'Shared session invitation ready' : 'Launch the interview to create an invitation'}
                 </span>
               </div>
+              {invitationUrl && <div className="flex gap-2 pt-2">
+                <input readOnly value={invitationUrl} aria-label="Candidate invitation URL" className="min-w-0 flex-1 rounded-lg border border-indigo-200 bg-white px-2 py-1.5 text-[11px] text-slate-700" />
+                <Button variant="secondary" size="sm" onClick={copyInvitation}>{inviteCopied ? 'Copied' : 'Copy link'}</Button>
+              </div>}
             </div>
           </div>
         </Card>
@@ -457,18 +559,18 @@ export default function HRInterviewMonitorPage() {
 
           {/* Overall Integrity Score */}
           <div className={`px-2.5 py-1.5 rounded-full text-xs font-semibold border ${
-            overallRisk === 'critical'
+            gazeAssessment.status === 'high'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+              : gazeAssessment.status === 'low'
               ? 'bg-rose-50 border-rose-200 text-rose-700'
-              : overallRisk === 'warning'
-              ? 'bg-amber-50 border-amber-200 text-amber-700'
-              : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+              : 'bg-slate-50 border-slate-200 text-slate-600'
           }`}>
-            Integrity: {overallRisk.toUpperCase()}
+            Integrity: {gazeAssessment.status === 'high' ? 'HIGH' : gazeAssessment.status === 'low' ? 'LOW' : 'WAITING'}
           </div>
 
           {/* Candidate Room Link */}
           <Link
-            href="/candidate/interview"
+            href={invitationUrl || '/candidate/interview'}
             target="_blank"
             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
           >
@@ -499,9 +601,10 @@ export default function HRInterviewMonitorPage() {
               </div>
 
               <CameraMonitorPanel
-                stream={mediaStream}
                 active={isMonitorLaunched}
-                onIntegrityEvent={addIntegrityEvent}
+                gazeStatus={gazeAssessment.status}
+                attentionPct={gazeAssessment.attentionPct}
+                faceDetected={gazeAssessment.faceDetected}
                 candidateName={candidate?.name}
               />
             </div>
@@ -527,7 +630,7 @@ export default function HRInterviewMonitorPage() {
 
             {/* Proctoring Telemetry Summary & Test Triggers */}
             <div className="pt-2 border-t border-slate-100 space-y-2.5">
-              <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="grid grid-cols-3 gap-2 text-xs">
                 <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/70">
                   <span className="text-slate-400 text-[10px] block uppercase font-medium">Eye Look-Aways</span>
                   <span className={`text-base font-bold ${gazeAwayCount >= 3 ? 'text-rose-600' : 'text-slate-700'}`}>
@@ -539,6 +642,13 @@ export default function HRInterviewMonitorPage() {
                   <span className="text-slate-400 text-[10px] block uppercase font-medium">Tab Switches</span>
                   <span className={`text-base font-bold ${tabSwitches >= 3 ? 'text-rose-600' : 'text-slate-700'}`}>
                     {tabSwitches} <span className="text-[11px] font-normal text-slate-400">switches</span>
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/70">
+                  <span className="text-slate-400 text-[10px] block uppercase font-medium">Typing Bursts</span>
+                  <span className={`text-base font-bold ${typingDetections ? 'text-amber-600' : 'text-slate-700'}`}>
+                    {typingDetections} <span className="text-[11px] font-normal text-slate-400">detected</span>
                   </span>
                 </div>
               </div>
@@ -634,9 +744,28 @@ export default function HRInterviewMonitorPage() {
                     AI Question Bank (Gemma / LLM)
                   </span>
                   <AIQuestionAssistant
-                    suggestions={DEFAULT_QUESTIONS}
-                    onSelectQuestion={(q) => handleDispatchQuestion(q, 'ai-generated')}
+                    suggestions={questionSuggestions}
+                    loading={isGeneratingQuestion}
+                    error={questionError}
+                    onGenerate={generateGemmaQuestion}
+                    onSelectQuestion={(q) => handleDispatchQuestion(q)}
                   />
+                  <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-700">Question order</span>
+                      <span className="text-[10px] text-slate-500">Reorder, then dispatch any item</span>
+                    </div>
+                    {questionQueue.map((item, index) => (
+                      <div key={item.question_id || `${item.question}-${index}`} className="flex items-center gap-1.5 rounded-lg border border-slate-100 p-2">
+                        <span className="w-5 shrink-0 text-[10px] text-slate-400">{index + 1}</span>
+                        <span className="min-w-0 flex-1 text-xs text-slate-700">{item.question}</span>
+                        <button aria-label="Move question up" disabled={index === 0} onClick={() => moveQueuedQuestion(index, -1)} className="rounded px-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30">↑</button>
+                        <button aria-label="Move question down" disabled={index === questionQueue.length - 1} onClick={() => moveQueuedQuestion(index, 1)} className="rounded px-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30">↓</button>
+                        <button disabled={isDispatchingQuestion} onClick={() => handleDispatchQuestion(item.question, item.category, item.question_id)} className="shrink-0 rounded bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700 disabled:opacity-50">Ask now</button>
+                      </div>
+                    ))}
+                    {questionError && <p role="alert" className="text-xs text-rose-700">{questionError}</p>}
+                  </div>
                 </div>
               )}
 
@@ -659,6 +788,7 @@ export default function HRInterviewMonitorPage() {
                   <IntegrityMonitorPanel
                     events={integrityEvents}
                     tabSwitches={tabSwitches}
+                    typingDetections={typingDetections}
                     focusLosses={focusLosses}
                     pasteEvents={pasteEvents}
                     screenSharing={screenSharing}
@@ -686,8 +816,8 @@ export default function HRInterviewMonitorPage() {
 
             <AIQuestionCard
               question={currentQuestion}
-              questionNumber={questionIndex + 1}
-              totalQuestions={DEFAULT_QUESTIONS.length + history.length}
+              questionNumber={questionIndex}
+              totalQuestions={questionQueue.length}
               category={currentCategory}
             />
           </div>
@@ -720,8 +850,10 @@ export default function HRInterviewMonitorPage() {
                 });
               }}
               onNextQuestion={() => {
-                const nextIdx = (questionIndex + 1) % DEFAULT_QUESTIONS.length;
-                handleDispatchQuestion(DEFAULT_QUESTIONS[nextIdx].text, DEFAULT_QUESTIONS[nextIdx].category);
+                const currentIndex = questionQueue.findIndex((question) => question.question === currentQuestion);
+                const nextQuestion = questionQueue[currentIndex + 1] || questionQueue.find((question) => question.question !== currentQuestion);
+                if (nextQuestion) handleDispatchQuestion(nextQuestion.question, nextQuestion.category, nextQuestion.question_id);
+                else setQuestionError('Add or generate another question before continuing.');
               }}
             />
           </div>
@@ -768,7 +900,7 @@ export default function HRInterviewMonitorPage() {
       {/* End Session Confirmation Modal */}
       {showEndModal && (
         <EndInterviewModal
-          questionCount={history.length + (latestAnswer ? 1 : 0)}
+          questionCount={history.length + (latestAnswer && lastArchivedAnswerIdRef.current !== latestAnswer.id ? 1 : 0)}
           onConfirm={() => {
             setShowEndModal(false);
             handleEndSession();

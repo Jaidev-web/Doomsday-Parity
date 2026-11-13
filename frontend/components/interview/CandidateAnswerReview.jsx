@@ -27,12 +27,12 @@ export default function CandidateAnswerReview({
         <div>
           <h4 className="text-sm font-semibold text-slate-800">Waiting for Candidate Answer</h4>
           <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-            Once the candidate speaks into their microphone in the Candidate Room, their transcribed response and real-time AI speech analysis will appear here.
+            The submitted transcript appears here as soon as it is saved. Gemma review follows in the background.
           </p>
         </div>
         <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-          <span>Microphone stream connected</span>
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          <span>Interview session active · no answer submitted yet</span>
         </div>
       </div>
     );
@@ -74,13 +74,22 @@ export default function CandidateAnswerReview({
   }
 
   // Answer received — display transcript & AI analysis
-  const aiScore = candidateAnswer.aiScore ?? 28;
-  const isLikelyAI = aiScore > 60;
-  const isSuspicious = aiScore >= 35 && aiScore <= 60;
+  const aiScore = candidateAnswer.aiScore ?? 0;
+  const analysisPending = candidateAnswer.analysisStatus === 'pending';
+  const isLikelyAI = Boolean(candidateAnswer.flaggedForReview);
+  const isSuspicious = candidateAnswer.verdict === 'inconclusive' || candidateAnswer.verdict === 'review_required';
 
-  const verdictConfig = isLikelyAI
+  const verdictConfig = analysisPending
     ? {
-        label: 'High Probability AI Generated',
+        label: 'Transcript received · Gemma review running',
+        color: 'text-indigo-700',
+        bg: 'bg-indigo-50 border-indigo-200',
+        badge: 'bg-indigo-100 text-indigo-800 border-indigo-300',
+        icon: Bot,
+      }
+    : isLikelyAI
+    ? {
+        label: 'Flagged for Human Review',
         color: 'text-rose-700',
         bg: 'bg-rose-50 border-rose-300',
         badge: 'bg-rose-100 text-rose-800 border-rose-300',
@@ -88,14 +97,14 @@ export default function CandidateAnswerReview({
       }
     : isSuspicious
     ? {
-        label: 'Inconclusive / Review Required',
+        label: 'Inconclusive — More Evidence Needed',
         color: 'text-amber-700',
         bg: 'bg-amber-50 border-amber-300',
         badge: 'bg-amber-100 text-amber-800 border-amber-300',
         icon: AlertTriangle,
       }
     : {
-        label: 'Natural Spoken Response',
+        label: 'No Strong AI-like Patterns',
         color: 'text-emerald-700',
         bg: 'bg-emerald-50 border-emerald-300',
         badge: 'bg-emerald-100 text-emerald-800 border-emerald-300',
@@ -114,15 +123,15 @@ export default function CandidateAnswerReview({
           </div>
           <div>
             <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Candidate Response (Microphone Transcription)
+              Candidate Response (Transcript)
             </h4>
-            <p className="text-[11px] text-slate-400">Captured via Whisper STT · {candidateAnswer.timestamp || 'Just now'}</p>
+            <p className="text-[11px] text-slate-400">Submitted · {candidateAnswer.timestamp || 'Just now'}</p>
           </div>
         </div>
 
         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${verdictConfig.badge}`}>
           <VIcon className="w-3.5 h-3.5" />
-          <span>AI Score: {aiScore}%</span>
+          <span>{analysisPending ? 'Checking answer…' : `Pattern score: ${aiScore}/100`}</span>
         </div>
       </div>
 
@@ -141,7 +150,7 @@ export default function CandidateAnswerReview({
             <div className="flex items-center gap-2">
               <Bot className={`w-4 h-4 ${verdictConfig.color}`} />
               <span className={`text-xs font-bold uppercase tracking-wider ${verdictConfig.color}`}>
-                AI Speech Detection Analysis
+                Transcript Style Review
               </span>
             </div>
             <span className={`text-xs font-semibold ${verdictConfig.color}`}>
@@ -149,45 +158,73 @@ export default function CandidateAnswerReview({
             </span>
           </div>
 
-          {/* Signal checks grid */}
-          <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+          {analysisPending && (
+            <p role="status" className="rounded-lg bg-white/80 p-2 text-xs text-indigo-800">
+              The transcript is saved and visible to HR. Gemma is checking answer style in the background.
+            </p>
+          )}
+
+          <details className="rounded-lg border border-slate-200 bg-white/70 px-3 py-2">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-600">Review analysis details</summary>
+            <div className="grid grid-cols-2 gap-2 text-xs pt-2">
             <div className="bg-white/80 rounded-lg p-2 border border-slate-200/60">
               <span className="text-slate-500 block text-[10px] uppercase font-semibold">Vocabulary Complexity</span>
-              <span className={`font-semibold ${isLikelyAI ? 'text-rose-600' : 'text-slate-700'}`}>
-                {candidateAnswer.signals?.vocabulary || (isLikelyAI ? 'Unusually high / Textbook level' : 'Normal colloquial')}
+              <span className="font-semibold text-slate-700">
+                {candidateAnswer.signals?.vocabulary || 'Not available'}
               </span>
             </div>
 
             <div className="bg-white/80 rounded-lg p-2 border border-slate-200/60">
               <span className="text-slate-500 block text-[10px] uppercase font-semibold">Filler Word Density (um/uh)</span>
-              <span className={`font-semibold ${isLikelyAI ? 'text-rose-600' : 'text-emerald-700'}`}>
-                {candidateAnswer.signals?.fillers || (isLikelyAI ? '0 detected (Artificially fluent)' : 'Natural pauses & fillers detected')}
+              <span className="font-semibold text-slate-700">
+                {candidateAnswer.signals?.fillers || 'Not available'}
               </span>
             </div>
 
             <div className="bg-white/80 rounded-lg p-2 border border-slate-200/60">
               <span className="text-slate-500 block text-[10px] uppercase font-semibold">Sentence Uniformity</span>
-              <span className={`font-semibold ${isLikelyAI ? 'text-rose-600' : 'text-slate-700'}`}>
-                {candidateAnswer.signals?.uniformity || (isLikelyAI ? 'Robotic sentence rhythm' : 'Natural human variability')}
+              <span className="font-semibold text-slate-700">
+                {candidateAnswer.signals?.uniformity || 'Not available'}
               </span>
             </div>
 
             <div className="bg-white/80 rounded-lg p-2 border border-slate-200/60">
-              <span className="text-slate-500 block text-[10px] uppercase font-semibold">Backend Endpoint</span>
-              <span className="font-mono text-[10px] text-slate-600">
-                POST /api/interviews/analyze-response
+              <span className="text-slate-500 block text-[10px] uppercase font-semibold">Personal Context</span>
+              <span className="font-semibold text-slate-700">
+                {candidateAnswer.signals?.personal_context || 'Not available'}
               </span>
             </div>
-          </div>
+            <div className="bg-white/80 rounded-lg p-2 border border-slate-200/60">
+              <span className="text-slate-500 block text-[10px] uppercase font-semibold">Confidence</span>
+              <span className="font-semibold text-slate-700 capitalize">{candidateAnswer.confidence || 'low'}</span>
+            </div>
+            </div>
+
+            {candidateAnswer.reasons?.length > 0 && (
+              <ul className="mt-2 list-disc list-inside space-y-1 text-xs text-slate-700">
+                {candidateAnswer.reasons.map((reason, index) => <li key={index}>{reason}</li>)}
+              </ul>
+            )}
+            <p className="mt-2 text-[10px] text-slate-500">
+              {candidateAnswer.note || 'Transcript style only; audio prosody and authorship cannot be established from this score.'}
+              {candidateAnswer.analysisSource ? ` Analysis: ${candidateAnswer.analysisSource}.` : ''}
+            </p>
+            {candidateAnswer.modelError && (
+              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
+                Gemma was unavailable for this answer; the displayed score uses text-pattern signals only. {candidateAnswer.modelError}
+              </p>
+            )}
+          </details>
 
           {isLikelyAI && (
             <div className="flex items-start gap-2 bg-rose-100/80 text-rose-800 rounded-lg p-2 text-xs">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-700" />
               <span>
-                <strong>Warning:</strong> Candidate response exhibits structural patterns matching LLM-generated speech. Consider asking a spontaneous follow-up question.
+                <strong>Review signal, not proof:</strong> This transcript showed several AI-like style patterns. Consider asking a consistent follow-up question and reviewing the response in context.
               </span>
             </div>
           )}
+
         </div>
 
         {/* HR Action Controls */}

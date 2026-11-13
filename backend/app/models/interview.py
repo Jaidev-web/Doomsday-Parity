@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 from datetime import datetime
 
@@ -7,6 +7,42 @@ class InterviewEvent(BaseModel):
     event_type: str  # tab_switch, copy_paste, focus_loss, idle_timeout, window_resize
     timestamp: datetime
     details: Optional[Dict] = None
+
+
+class InterviewGazeUpdate(BaseModel):
+    is_looking_at_screen: bool
+    face_detected: bool
+    timestamp: datetime
+    attention_score: float = Field(ge=0, le=100)
+
+
+class InterviewAnswerSubmission(BaseModel):
+    question_id: str
+    question: str = Field(min_length=1, max_length=2000)
+    category: str = Field(default="general", max_length=100)
+    transcript: str = Field(min_length=5, max_length=20000)
+
+
+class InterviewResponseAnalysisRequest(BaseModel):
+    question_id: str
+    question: str = Field(default="General interview question", max_length=2000)
+    transcript: str = Field(min_length=5, max_length=20000)
+
+
+class InterviewQuestionDispatch(BaseModel):
+    question_id: str = Field(min_length=1, max_length=100)
+    question: str = Field(min_length=1, max_length=2000)
+    category: str = Field(default="custom", max_length=100)
+
+
+class InterviewQuestionGenerationRequest(BaseModel):
+    skill: Optional[str] = Field(default=None, max_length=300)
+    project: Optional[str] = Field(default=None, max_length=1000)
+    context: Optional[str] = Field(default=None, max_length=2000)
+
+
+class InterviewQuestionQueueUpdate(BaseModel):
+    questions: List[InterviewQuestionDispatch] = Field(max_length=100)
 
 
 class InterviewSession(BaseModel):

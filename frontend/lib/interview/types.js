@@ -5,6 +5,7 @@
 
 /**
  * @typedef {Object} InterviewSession
+ * @property {string} id - Database record ID (same value as session_id)
  * @property {string} session_id
  * @property {string} candidate_id
  * @property {string} started_at - ISO timestamp
