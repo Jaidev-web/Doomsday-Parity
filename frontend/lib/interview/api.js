@@ -2,7 +2,7 @@
 // When backend is ready, mock fallbacks will be bypassed automatically
 
 import { INTERVIEW_API_BASE, INTERVIEW_ENDPOINTS } from './config';
-import { MOCK_RESUME_DATA, RESUME_QUESTION_TEMPLATES, GENERIC_QUESTIONS } from './mockData';
+import { MOCK_RESUME_DATA } from './mockData';
 
 async function interviewFetch(endpoint, options = {}) {
   try {
@@ -18,6 +18,22 @@ async function interviewFetch(endpoint, options = {}) {
   }
 }
 
+async function strictInterviewFetch(endpoint, options = {}) {
+  const res = await fetch(`${INTERVIEW_API_BASE}${endpoint}`, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  });
+  if (!res.ok) {
+    let detail = `Request failed (${res.status})`;
+    try {
+      const body = await res.json();
+      detail = body.detail || detail;
+    } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SESSION MANAGEMENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -25,15 +41,39 @@ async function interviewFetch(endpoint, options = {}) {
 export async function createInterviewSession(candidateId) {
   // BACKEND INTEGRATION: POST /api/interviews/sessions?candidate_id={id}
   // Returns: { session_id, candidate_id, started_at, status }
-  const data = await interviewFetch(INTERVIEW_ENDPOINTS.createSession(candidateId), { method: 'POST' });
-  if (data) return data;
+  return strictInterviewFetch(INTERVIEW_ENDPOINTS.createSession(candidateId), { method: 'POST' });
+}
 
-  return {
-    session_id: `session-${candidateId}-${Date.now()}`,
-    candidate_id: candidateId,
-    started_at: new Date().toISOString(),
-    status: 'active',
-  };
+export function getInterviewSession(sessionId) {
+  return strictInterviewFetch(INTERVIEW_ENDPOINTS.getSession(sessionId));
+}
+
+export function dispatchInterviewQuestion(sessionId, question) {
+  return strictInterviewFetch(INTERVIEW_ENDPOINTS.dispatchQuestion(sessionId), {
+    method: 'POST',
+    body: JSON.stringify(question),
+  });
+}
+
+export function saveInterviewQuestionQueue(sessionId, questions) {
+  return strictInterviewFetch(INTERVIEW_ENDPOINTS.questionQueue(sessionId), {
+    method: 'PUT',
+    body: JSON.stringify({ questions }),
+  });
+}
+
+export function updateInterviewGaze(sessionId, gaze) {
+  return strictInterviewFetch(INTERVIEW_ENDPOINTS.updateGaze(sessionId), {
+    method: 'POST',
+    body: JSON.stringify(gaze),
+  });
+}
+
+export function submitInterviewAnswer(sessionId, answer) {
+  return strictInterviewFetch(INTERVIEW_ENDPOINTS.submitAnswer(sessionId), {
+    method: 'POST',
+    body: JSON.stringify(answer),
+  });
 }
 
 export async function completeInterviewSession(sessionId, summary) {
@@ -61,16 +101,11 @@ export async function generateQuestionsFromResume(sessionId, { skill, project, c
   // BACKEND INTEGRATION: POST /api/interviews/{sessionId}/questions/from-resume
   // Body: { skill, project, context }
   // Returns: [{ question_id, question_text, difficulty, category }]
-  const data = await interviewFetch(INTERVIEW_ENDPOINTS.questionsFromResume(sessionId), {
+  const data = await strictInterviewFetch(INTERVIEW_ENDPOINTS.questionsFromResume(sessionId), {
     method: 'POST',
     body: JSON.stringify({ skill, project, context }),
   });
-  if (data) return data;
-
-  // Mock: pick from templates or generic
-  const templates = RESUME_QUESTION_TEMPLATES[skill] || GENERIC_QUESTIONS;
-  const q = templates[Math.floor(Math.random() * templates.length)];
-  return [{ question_id: `q-${Date.now()}`, question_text: q, difficulty: 'medium', category: skill || 'general' }];
+  return data;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,18 +118,23 @@ export async function uploadAudioForTranscription(sessionId, audioBlob, question
   // Returns: { transcript_id, transcript_text, duration_seconds }
   try {
     const formData = new FormData();
-    formData.append('audio', audioBlob, 'response.webm');
+    const ext = audioBlob.type?.includes('mp4') ? 'mp4' : audioBlob.type?.includes('ogg') ? 'ogg' : 'webm';
+    formData.append('audio', audioBlob, `response.${ext}`);
     formData.append('question_id', questionId || '');
 
     const res = await fetch(`${INTERVIEW_API_BASE}${INTERVIEW_ENDPOINTS.uploadAudio(sessionId)}`, {
       method: 'POST',
       body: formData,
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      let detail = `Audio transcription failed (${res.status})`;
+      try { detail = (await res.json()).detail || detail; } catch {}
+      throw new Error(detail);
+    }
     return await res.json();
   } catch (err) {
-    console.warn('[InterviewAPI] Audio upload failed:', err.message, '— using mock');
-    return null;
+    console.error('[InterviewAPI] Audio upload failed:', err.message);
+    throw err;
   }
 }
 
@@ -117,43 +157,10 @@ export async function analyzeResponseForAI(sessionId, { transcript, questionId }
   // BACKEND INTEGRATION: POST /api/interviews/{sessionId}/analyze-response
   // Body: { transcript, question_id }
   // Returns: { ai_score (0-100), signals: { vocabulary_complexity, sentence_uniformity, ... }, verdict }
-  const data = await interviewFetch(INTERVIEW_ENDPOINTS.analyzeResponse(sessionId), {
+  return strictInterviewFetch(INTERVIEW_ENDPOINTS.analyzeResponse(sessionId), {
     method: 'POST',
-    body: JSON.stringify({ transcript, question_id: questionId }),
+    body: JSON.stringify({ transcript, question_id: questionId, question: 'General interview question' }),
   });
-  if (data) return data;
-
-  // Frontend heuristic mock — NOT real AI detection
-  const wordCount = transcript ? transcript.split(' ').length : 0;
-  const avgWordLength = transcript
-    ? transcript.split(' ').reduce((a, w) => a + w.length, 0) / wordCount
-    : 0;
-  const fillerWords = ['um', 'uh', 'like', 'you know', 'basically', 'actually', 'kind of'];
-  const fillerCount = fillerWords.filter((w) => transcript?.toLowerCase().includes(w)).length;
-  const sentences = transcript ? transcript.split(/[.!?]+/).filter(Boolean) : [];
-  const avgSentenceLen = sentences.length ? wordCount / sentences.length : 0;
-
-  // Simple heuristic score — longer words, uniform sentences, no fillers → higher AI probability
-  let score = 0;
-  if (avgWordLength > 6) score += 25;
-  if (fillerCount === 0) score += 25;
-  if (avgSentenceLen > 20) score += 20;
-  if (wordCount < 30) score -= 15;
-  score = Math.max(5, Math.min(95, score + Math.floor(Math.random() * 15)));
-
-  return {
-    ai_score: score,
-    signals: {
-      vocabulary_complexity: avgWordLength > 6 ? 'high' : 'normal',
-      sentence_uniformity: avgSentenceLen > 20 ? 'uniform' : 'varied',
-      filler_word_density: fillerCount === 0 ? 'absent' : `${fillerCount} detected`,
-      pause_patterns: 'unavailable (audio needed)',
-      hedging_language: transcript?.toLowerCase().includes('i think') || transcript?.toLowerCase().includes('i believe') ? 'present' : 'absent',
-      personal_anecdotes: score < 40 ? 'detected' : 'not detected',
-    },
-    verdict: score < 30 ? 'natural' : score < 65 ? 'review' : 'likely_ai',
-    note: 'Frontend heuristics only — connect backend for Whisper + LLM analysis',
-  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -165,7 +172,11 @@ export async function recordIntegrityEvent(sessionId, event) {
   // Body: { event_type, severity, timestamp, metadata }
   return interviewFetch(INTERVIEW_ENDPOINTS.recordEvent(sessionId), {
     method: 'POST',
-    body: JSON.stringify(event),
+    body: JSON.stringify({
+      event_type: event.event_type || event.eventType,
+      timestamp: event.timestamp,
+      details: event.details || event.metadata || null,
+    }),
   });
 }
 

@@ -26,8 +26,11 @@ export const INTERVIEW_CONFIG = {
 // Backend API endpoint map — connectable to FastAPI, Whisper, Gemma & LangChain
 export const INTERVIEW_ENDPOINTS = {
   // Session lifecycle
-  createSession:        (candidateId) => `/api/interviews/sessions?candidate_id=${candidateId}`,
-  getSession:           (sessionId)   => `/api/interviews/${sessionId}`,
+  createSession:        (candidateId) => `/api/interviews/sessions?candidate_id=${encodeURIComponent(candidateId)}`,
+  getSession:           (sessionId)   => `/api/interviews/${encodeURIComponent(sessionId)}`,
+  dispatchQuestion:     (sessionId)   => `/api/interviews/${encodeURIComponent(sessionId)}/question`,
+  questionQueue:        (sessionId)   => `/api/interviews/${encodeURIComponent(sessionId)}/questions/queue`,
+  updateGaze:           (sessionId)   => `/api/interviews/${encodeURIComponent(sessionId)}/gaze`,
   completeSession:      (sessionId)   => `/api/interviews/${sessionId}/complete`,
   getReport:            (sessionId)   => `/api/interviews/${sessionId}/report`,
 

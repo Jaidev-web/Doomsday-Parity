@@ -4,6 +4,9 @@ pydantic==2.10.4
 pydantic-settings==2.7.1
 email-validator==2.2.0
 python-multipart==0.0.20
+faster-whisper==1.1.1
+# faster-whisper 1.1.1 passes a PyAV option removed in PyAV 19.
+av<19
 python-dotenv==1.0.1
 httpx==0.28.1
 PyPDF2==3.0.1

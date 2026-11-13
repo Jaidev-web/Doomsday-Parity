@@ -9,6 +9,7 @@ export default function ResumeQuestionGenerator({ sessionId, candidateId, onAskQ
   const [resumeData, setResumeData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(null);
+  const [generationError, setGenerationError] = useState('');
   const [expandedSection, setExpandedSection] = useState('skills');
 
   useEffect(() => {
@@ -22,6 +23,7 @@ export default function ResumeQuestionGenerator({ sessionId, candidateId, onAskQ
   const generateQuestion = async (type, value) => {
     const key = `${type}:${value}`;
     setGenerating(key);
+    setGenerationError('');
     try {
       const questions = await generateQuestionsFromResume(sessionId, {
         skill: type === 'skill' ? value : null,
@@ -29,10 +31,11 @@ export default function ResumeQuestionGenerator({ sessionId, candidateId, onAskQ
         context: type === 'experience' ? value : null,
       });
       if (questions?.length && onAskQuestion) {
-        onAskQuestion(questions[0].question_text);
+        onAskQuestion(questions[0]);
       }
     } catch (err) {
       console.error('Question generation error:', err);
+      setGenerationError(err.message || 'Could not generate a question. Check that Gemma is running.');
     } finally {
       setGenerating(null);
     }
@@ -67,6 +70,7 @@ export default function ResumeQuestionGenerator({ sessionId, candidateId, onAskQ
 
   return (
     <div className="space-y-3 w-full min-w-0">
+      {generationError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{generationError}</p>}
       {/* Candidate Profile Summary Banner */}
       <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 min-w-0">
         <div className="flex items-center justify-between gap-2">

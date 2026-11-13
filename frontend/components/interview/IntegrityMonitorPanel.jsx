@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ShieldAlert, Wifi, Monitor, Eye, AlertTriangle, Clock, CheckCircle2, XCircle } from 'lucide-react';
 
-export default function IntegrityMonitorPanel({ events, tabSwitches, focusLosses, pasteEvents, screenSharing, sessionActive }) {
+export default function IntegrityMonitorPanel({ events, tabSwitches, typingDetections = 0, focusLosses, pasteEvents, screenSharing, sessionActive }) {
   const [expanded, setExpanded] = useState(true);
 
   const criticalCount = events?.filter((e) => e.severity === 'critical' || e.severity === 'high').length || 0;
@@ -44,6 +44,7 @@ export default function IntegrityMonitorPanel({ events, tabSwitches, focusLosses
       <div className="grid grid-cols-2 gap-2">
         {[
           { label: 'Tab switches', value: tabSwitches, warn: 3, crit: 7 },
+          { label: 'Typing bursts', value: typingDetections, warn: 1, crit: 5 },
           { label: 'Focus losses', value: focusLosses, warn: 2, crit: 5 },
           { label: 'Paste events', value: pasteEvents, warn: 2, crit: 5 },
         ].map(({ label, value, warn, crit }) => (

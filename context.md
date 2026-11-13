@@ -6,10 +6,18 @@
 
 ## 1. Project Overview & Objective
 
-**TrustHire** is an AI-assisted candidate fraud detection and verification platform built for hackathon demonstration. It addresses candidate deception across three distinct vectors:
+**TrustHire** is an AI-assisted candidate fraud detection and verification platform built for hackathon demonstration. It addresses candidate deception across four distinct vectors:
+
 1. **Credential Verification**: Automated cross-checking of resume claims against LinkedIn tenure, certificate PDF metadata creation timestamps, and GitHub activity age/commit volumes.
 2. **Identity Verification**: Multi-source legal name matching and zero-knowledge simulated government registry validation (PAN, Passport).
-3. **Interview Integrity Monitoring**: Client-side proctoring telemetry tracking tab switches, window blur events, and correlated clipboard paste activity.
+3. **Voice-Enabled AI Interviewer & Candidate Integrity Monitoring**:
+   - **Role Separation**: Dedicated Candidate Room (`/candidate/interview`) for reading questions and recording voice answers; dedicated HR Monitoring Center (`/dashboard/candidates/[id]/interview`) for question generation, real-time eye movement tracking, and AI-generated answer detection.
+   - **Voice-First Candidate Interaction**: Microphone capture with automated local Whisper speech-to-text transcription.
+   - **AI-Generated Answer Detection**: Spoken answers are analyzed for linguistic markers of LLM assistance (uniform sentence length, elevated perplexity, absence of natural filler words/pauses, producing a 0–100% AI Likelihood Score).
+   - **Webcam & Eye Movement Gaze Tracking**: Real-time canvas/FaceDetector tracking detecting gaze orientation (looking at screen vs. eye deviation away), prolonged look-away counter, and dynamic attention percentage score.
+   - **Resume Document Scanner & Question Generator**: Scans candidate documents/resumes (skills, projects, past experience) and leverages Ollama + Gemma 4 / LangChain templates to generate tailored technical challenge questions dispatched to the candidate in real time.
+   - **Dual Video Feeds**: Both portals display professional video tiles (Candidate sees HR interviewer feed + self preview; HR sees candidate proctoring feed + HR broadcast tile with mute/video controls).
+   - **Background Integrity Telemetry**: Detects tab switching (Page Visibility API), window blur events, unauthorized typing, and clipboard paste bursts.
 4. **Deterministic Trust Scoring**: A rule-based, explainable 0–100 score (Credentials 40%, Identity 35%, Interview 25%) paired with **Gemma 4 AI** for plain-English recruiter summaries and risk analysis.
 5. **Dual-Portal Authentication System**: Role-segregated Candidate and HR/Recruiter entry points, candidate anti-bot CAPTCHA, Firebase email-link sign-in, password recovery UI, and reactive toast notifications. The Firebase migration is currently incomplete; see Section 4.
 
@@ -20,9 +28,12 @@
 | Layer | Technologies Used | Key Architectural Decision |
 |---|---|---|
 | **Frontend** | Next.js 16 (App Router), React 19, Tailwind CSS v4, Lucide React | Single-page and dashboard components built in `.jsx` for rapid iteration. Uses Tailwind CSS compiled into `app/tailwind.css`. Global `<Toaster />` mounted in root `layout.js` for reactive event notifications. |
+| **Authentication & Security** | Canvas API, SpeechSynthesis, Pub/Sub Toast Event Bus | Client-side dual authentication suite (Candidate & HR). Implements canvas distortion security CAPTCHAs with audio synthesis for candidates, 6-digit auto-advancing OTP boxes with resend countdowns, and 3-step password recovery. |
+| **Interview & Proctoring** | MediaRecorder API, HTML5 Canvas, FaceDetector API, WebRTC / WebM | Dedicated role-separated interview engine. Canvas-based eye gaze estimator with pupil/face centering heuristics and attention scoring. Dual-tile video architecture for candidate and interviewer feeds. |
+| **Speech-to-Text & AI Detection** | Local Whisper, Ollama + Gemma 4, LangChain | Voice recording via MediaRecorder (WebM/Opus) transcribing into text. Spoken answers analyzed via AI response detector (0–100% LLM score based on vocabulary complexity, filler density, and syntactic uniformity). |
 | **Authentication & Security** | Firebase Authentication email-link sign-in, Canvas API, SpeechSynthesis, Pub/Sub Toast Event Bus | Firebase email-link sign-in is the intended flow. The client callback exists, but the backend ID-token/profile handoff still needs integration; see Section 4. |
 | **Backend** | Python 3.13, FastAPI, Pydantic v2, Uvicorn, httpx, firebase-admin | Modular REST API with route segregation. Uses a dynamic `DatabaseManager` to switch between an in-memory `MockDB` (for demo/local development) and `FirebaseDB` (for production persistence) based on `DEMO_MODE` environment toggle. |
-| **AI Layer** | Gemma 4 integration via `AIService` | Supports live Gemma endpoints with automatic fallback to realistic `[Demo Mode]` responses if no API key is provided. |
+| **AI Layer** | Gemma 4 integration via `AIService` & LangChain context | Supports live Gemma endpoints with automatic fallback to realistic `[Demo Mode]` responses if no API key is provided. Pre-seeded candidate response models for Sarah (18% AI), Marcus (88% AI), and Priya (42% AI). |
 | **Documents** | PyPDF2, python-docx, Pillow | Extracts text and PDF metadata (`/Author`, `/CreationDate`) for forensic tamper checks. |
 
 ---
@@ -30,7 +41,7 @@
 ## 3. Repository Structure & File Map
 
 ```
-c:\Doomsday-Parity\
+Doomsday-Parity/
 ├── backend/                              # FastAPI application
 │   ├── app/
 │   │   ├── main.py                       # FastAPI entry point, CORS, router inclusion
@@ -86,7 +97,7 @@ c:\Doomsday-Parity\
 │   │   │   ├── layout.jsx                # Candidate portal header & navigation
 │   │   │   ├── page.jsx                  # Candidate portal home & action cards
 │   │   │   ├── apply/page.jsx            # Candidate document & profile submission wizard
-│   │   │   ├── interview/page.jsx        # Live proctored assessment room (camera & questions)
+│   │   │   ├── interview/page.jsx        # Live voice assessment room (dual camera & voice recorder)
 │   │   │   └── status/page.jsx           # Application verification progress tracker
 │   │   └── dashboard/                    # SECTION 2: HR ONLY PORTAL
 │   │       ├── layout.jsx                # Recruiter navigation shell with sidebar
@@ -95,15 +106,33 @@ c:\Doomsday-Parity\
 │   │       │   ├── page.jsx              # Candidate list (Search, Filter, Table/Grid)
 │   │       │   └── [id]/
 │   │       │       ├── page.jsx          # Candidate profile (Gauge, Tabs, Gemma AI Chat)
-│   │       │       └── interview/page.jsx# Live proctoring monitor & event logger
+│   │       │       └── interview/page.jsx# Live HR Interview Monitor & Proctoring Center
 │   │       ├── credentials/page.jsx      # Credential audits list
 │   │       ├── identity/page.jsx         # Identity audits list
-│   │       ├── interviews/page.jsx       # Interview sessions list
+│   │       ├── interviews/page.jsx       # Interview sessions list with "Launch Monitor"
 │   │       ├── reports/page.jsx          # Cohort risk distribution analytics
 │   │       └── settings/page.jsx         # Demo mode & Gemma model settings
+│   │
 │   ├── components/
 │   │   ├── auth/                         # Authentication & Security Components
 │   │   │   ├── Captcha.jsx               # Canvas anti-bot challenge with audio readout
+│   │   │   ├── OtpVerification.jsx       # 6-digit individual box inputs with countdown
+│   │   │   └── ForgotPasswordFlow.jsx    # 3-step recovery flow (Email -> OTP -> New Password)
+│   │   ├── interview/                    # Specialized Interview & Proctoring Components
+│   │   │   ├── CameraMonitorPanel.jsx    # Candidate video feed with real-time eye gaze tracking
+│   │   │   ├── HRCameraTile.jsx          # Reusable HR interviewer camera video tile with controls
+│   │   │   ├── CandidateAnswerReview.jsx # Live Whisper speech transcript & AI response detector
+│   │   │   ├── ResumeQuestionGenerator.jsx # Scans resume skills/projects to generate AI questions
+│   │   │   ├── AIQuestionCard.jsx        # Active question display with TTS audio read-aloud
+│   │   │   ├── AIQuestionAssistant.jsx   # Gemma / LangChain categorized question bank
+│   │   │   ├── IntegrityMonitorPanel.jsx # Real-time tab switch, focus loss & paste telemetry
+│   │   │   ├── DocumentConsistencyPanel.jsx # Cross-checks resume claims vs background checks
+│   │   │   ├── InterviewHeader.jsx       # Navigation breadcrumb & session progress bar
+│   │   │   ├── InterviewHistory.jsx      # Collapsible completed Q&A transcript log
+│   │   │   ├── InterviewCompletion.jsx   # Post-session summary with final integrity metrics
+│   │   │   ├── EndInterviewModal.jsx     # End session confirmation dialog
+│   │   │   ├── EthicalConsentModal.jsx   # Pre-interview proctoring disclosure & consent
+│   │   │   └── VoiceRecorder.jsx         # Candidate voice recording interface with waveform
 │   │   │   ├── EmailLinkNotice.jsx       # Inbox instructions and resend link action
 │   │   │   ├── OtpVerification.jsx       # Legacy demo OTP used by recovery UI
 │   │   │   └── ForgotPasswordFlow.jsx    # Demo recovery flow (Email -> demo OTP -> New Password)
@@ -112,10 +141,21 @@ c:\Doomsday-Parity\
 │   │   ├── candidate/                    # TrustGauge, FindingCard, AIChat, CandidateCard
 │   │   ├── dashboard/                    # StatCard, ActivityFeed, TrustDistribution
 │   │   └── landing/                      # Navbar, Hero, Features, HowItWorks, Footer
+│   │
 │   ├── lib/
 │   │   ├── api.js                        # Unified fetch client with offline fallbacks
 │   │   ├── firebase.js                   # Firebase client and email-link helpers
 │   │   ├── constants.js                  # Demo data, thresholds, and questions
+│   │   ├── utils.js                      # Formatting, score colors, Tailwind merge
+│   │   ├── interviewData.js              # Backward-compatible re-export for interview mocks
+│   │   └── interview/                    # Dedicated Interview Engine Service Layer
+│   │       ├── api.js                    # 12 service functions with mock fallbacks
+│   │       ├── config.js                 # API endpoints, thresholds, and config map
+│   │       ├── mockData.js               # Resume data, question templates, AI answer pools
+│   │       └── types.js                  # JSDoc schema specifications
+│   │
+│   ├── INTERVIEW_API_CONTRACT.md         # Full REST API specification for Whisper & Gemma
+│   └── package.json                      # Dependencies and build scripts
 │   │   └── utils.js                      # Formatting, score colors, Tailwind merge
 │   ├── .env.firebase.example              # Firebase web config template (copy to .env.local)
 │   └── package.json                      # Dependencies and build scripts (Firebase SDK included)
@@ -136,31 +176,104 @@ Firebase client setup is in `frontend/lib/firebase.js`. Copy `frontend/.env.fire
 
 The backend profile endpoint is intended to verify Firebase ID tokens before creating or retrieving role-specific profiles. Do not treat the current `sessionStorage` value alone as proof of backend authentication.
 
+3. **HR Recruiter Auth (`/login/hr`, `/signup/hr`)**:
+   - **Color Theme**: Indigo / Slate (`#4f46e5` / `bg-indigo-600`).
+   - **Workspace Registration**: Corporate email validation, organization name, and talent role.
+   - **Enterprise Security**: Built-in Two-Factor Authentication (OTP) toggle + simulated Enterprise SSO (Google Workspace, Azure AD).
+   - **Demo Account**: Pre-fills `recruiter@trusthire.ai` for instant access to candidate dossiers and Gemma 4 AI tools.
+
+4. **6-Digit One-Time Password (`<OtpVerification />`)**:
+   - Individual input boxes with auto-advance, backspace navigation, and clipboard paste listener.
+   - 45-second resend countdown timer with instant toast feedback.
+   - Acceptance for both expected demo codes and manual bypass values.
+
+5. **Forgot Password Flow (`<ForgotPasswordFlow />`)**:
+   - Integrated directly within the card UI:
+     - Step 1: Input registered email address.
+     - Step 2: Validate 6-digit OTP dispatched to email.
+     - Step 3: Enter and confirm new password (minimum 8 characters) with show/hide password toggles.
+
+6. **Hot Toast Notification System (`<Toast />`, `<Toaster />`)**:
+   - Pub/sub architecture mounted in `app/layout.js`.
+   - Fires toasts for user interactions: tab switching, captcha refresh/readout, OTP delivery, resend triggers, clipboard paste, login success, SSO launch, and demo pre-fill.
 The toast bus remains mounted in `frontend/app/layout.js` and reports auth errors, email-link send status, and form feedback.
 
 ---
 
-## 5. Demo Candidates & Scenario Data
+## 5. AI Interview & Proctoring Architecture (Candidate vs HR Separation)
+
+```
+┌─────────────────────────────────────────────────────────┐       ┌─────────────────────────────────────────────────────────┐
+│              CANDIDATE PORTAL                           │       │                   HR PORTAL                             │
+│         /candidate/interview                            │       │    /dashboard/candidates/[id]/interview                 │
+├─────────────────────────────────────────────────────────┤       ├─────────────────────────────────────────────────────────┤
+│ • Unified camera + microphone permission request        │       │ • "Launch Interview Monitor" Control Center             │
+│ • Dual video interface:                                 │       │ • Live Candidate Camera + Real-time Eye Gaze Tracking   │
+│    - HR Interviewer Camera Tile (incoming feed)         │       │ • HR Interviewer Camera Broadcast Tile (with controls)  │
+│    - Candidate Self-Preview (proctoring webcam)         │       │ • Background Integrity Telemetry (tab switches, blur)   │
+│ • Reads/listens to active dispatched question           │ ────> │ • Live Whisper Speech-to-Text Transcription Feed        │
+│ • Voice recorder with audio waveform & timer            │       │ • Automated AI-Generated Answer Detector (0–100% score) │
+│ • Previews Whisper speech-to-text transcription         │       │ • Resume Document Scanner & Question Generator          │
+│ • Submits answers to hiring team                        │       │ • Spontaneous Question Input & AI Question Bank         │
+│ • Real-time tab-switch warnings (visible to candidate)  │       │ • Document Discrepancy Cross-Check (fake claims audit)  │
+└─────────────────────────────────────────────────────────┘       └─────────────────────────────────────────────────────────┘
+```
+
+### Key Capabilities & Architecture:
+
+1. **Candidate Voice Interaction & Whisper STT**:
+   - Spoken responses recorded using browser `MediaRecorder` (`audio/webm;codecs=opus`).
+   - Transcribed via backend Whisper API (`POST /api/interviews/{sessionId}/audio`).
+   - Candidate can review/re-record before final submission.
+
+2. **Real-Time Eye Gaze & Attention Tracking**:
+   - `CameraMonitorPanel.jsx` samples webcam frames via `<canvas>` every 15 animation frames.
+   - Uses browser `FaceDetector` API (or luminance variance fallback) to detect pupil/face centroid deviation.
+   - Displays real-time status: **"Looking at screen"** (Green) vs. **"Eyes away from screen"** (Amber).
+   - Tracks continuous **Attention Score %** and flags prolonged look-aways (>3s).
+
+3. **AI-Generated Answer Detection Engine**:
+   - Analyzes transcribed responses (`POST /api/interviews/{sessionId}/analyze-response`).
+   - Checks vocabulary complexity, sentence syntactic uniformity, and filler word density (detects missing natural pauses like "um"/"uh").
+   - Output verdicts:
+     - 🟢 *Natural Spoken Response* (e.g. Sarah Chen: ~18% AI score)
+     - 🟡 *Review Required* (e.g. Priya Sharma: ~42% AI score)
+     - 🔴 *High Probability AI Generated* (e.g. Marcus Rivera: ~88% AI score with warning alert)
+
+4. **Resume-Based Question Generation (Gemma / Ollama)**:
+   - `ResumeQuestionGenerator.jsx` parses candidate resume data (skills, projects, experience).
+   - One-click **"Ask"** button triggers `POST /api/interviews/{sessionId}/questions/from-resume`, generating a targeted technical question via Gemma/LLM templates and dispatching it directly to the candidate's screen.
+
+5. **Balanced 2-Column Responsive Layout (HR Portal)**:
+   - Uses a rock-solid `lg:col-span-5` (Left) and `lg:col-span-7` (Right) grid layout inside `max-w-7xl mx-auto`.
+   - **Left Column**: Live video monitoring (Candidate Gaze Feed + HR Interviewer Tile) + Proctoring telemetry + HR Copilot tabbed tools.
+   - **Right Column**: Current active question + Candidate Voice Response & AI speech evaluation review + Custom question input + Transcript history.
+   - Completely eliminates horizontal scrolling, dropped columns, and squished 1-letter text wrapping.
+
+---
+
+## 6. Demo Candidates & Scenario Data
 
 The database comes pre-seeded on backend startup (`app/demo/seed.py`) with three distinct candidate profiles designed for hackathon judging:
 
 1. **Sarah Chen** (`cand-sarah-001`) — **High Trust (Score: 87.0)**
    - Role: Senior Frontend Engineer
    - Verification: All employment dates match LinkedIn, AWS Certificate verified, GitHub profile active since 2019, 0 proctoring tab switches.
+   - Spoken Answer: Natural colloquial speech with personal project context, 18% AI score (Natural).
 2. **Marcus Rivera** (`cand-marcus-002`) — **Critical Risk (Score: 42.0)**
    - Role: Full Stack Developer
    - Red Flags:
      - Resume claims 2020–2023 Senior Dev at TechCorp; LinkedIn shows Junior Dev 2021–2022. Overlaps with DataFlow Inc.
      - Google Cloud Certificate PDF creation date is March 2024 despite claimed Jan 2022 issue date (Author: "Template User").
      - GitHub created 2 months ago despite claiming 4+ years open-source contributions.
-     - Live interview: 7 tab switches away and 4 clipboard paste bursts.
+     - Live interview: 7 tab switches away, 4 clipboard paste bursts, and 88% AI score (Likely AI-generated).
 3. **Priya Sharma** (`cand-priya-003`) — **Needs Review (Score: 64.0)**
    - Role: Backend Engineer
-   - Mixed Signals: Azure certificate verification URL returns 404 (expired link), 3 proctoring tab switches, identity checks clean.
+   - Mixed Signals: Azure certificate verification URL returns 404 (expired link), 3 proctoring tab switches, identity checks clean. Spoken answer AI score 42% (Needs Review).
 
 ---
 
-## 6. How to Run the Project Locally
+## 7. How to Run the Project Locally
 
 ### Terminal 1: Backend (FastAPI)
 ```bash
@@ -179,16 +292,18 @@ pnpm run dev
 - App runs at: `http://localhost:3000`
 - Landing page: `http://localhost:3000`
 - Dual Portal Selector: `http://localhost:3000/login`
-- Candidate Login & Sign Up: `http://localhost:3000/login/candidate`
-- HR Recruiter Login & Sign Up: `http://localhost:3000/login/hr`
-- Recruiter Dashboard: `http://localhost:3000/dashboard`
-- Candidate Profile: `http://localhost:3000/dashboard/candidates/cand-marcus-002`
-- Live Interview Monitor: `http://localhost:3000/dashboard/candidates/cand-marcus-002/interview`
+- Candidate Portal: `http://localhost:3000/candidate`
+- Candidate Interview Room: `http://localhost:3000/candidate/interview`
+- HR Dashboard: `http://localhost:3000/dashboard`
+- Candidate Profile: `http://localhost:3000/dashboard/candidates/cand-sarah-001`
+- Live HR Interview Monitor: `http://localhost:3000/dashboard/candidates/cand-sarah-001/interview`
 
 ---
 
-## 7. Testing & Verification Status
+## 8. Testing & Verification Status
 
+- **Frontend Compilation**: Verified with `next build` (Next.js 16.4.6 with Turbopack). All routes compile statically/dynamically with **0 errors**.
+- **Backend Test Suite**: Tested with `python run_full_verification.py`. All 11 test assertions passed (CRUD, calculations, AI fallbacks, interview telemetry, and document parsing).
 - **Historical baseline (before the current Firebase Auth refactor)**: `next build` was previously reported to compile all 21 routes, and `python run_full_verification.py` passed all 11 backend module checks. These checks have not been rerun against the current partial auth migration.
 - **Current auth work**: Firebase SDK package resolution succeeded and `git diff --check` passed. A full frontend build and end-to-end Firebase link/token verification have not been run.
 - **Known lint baseline**: The earlier full ESLint run reported 31 errors and 7 warnings across interview, dashboard, and UI files. Targeted auth lint had passed before the latest Firebase ID-token migration; rerun after reconciling the API calls below.
@@ -203,29 +318,27 @@ pnpm run dev
   - `/dashboard` (plus `/candidates`, `/candidates/[id]`, `/candidates/[id]/interview`, `/credentials`, `/identity`, `/interviews`, `/reports`, `/settings`)
 - **Backend Test Suite**: Earlier run of `python run_full_verification.py` passed all 11 assertions (CRUD, calculations, AI fallbacks, interview telemetry, and document parsing).
 - **CSS Styling**: Built with Tailwind CSS v4 into `frontend/app/tailwind.css` and imported by `layout.js`.
+- **API Contract**: Defined in `frontend/INTERVIEW_API_CONTRACT.md` detailing schemas for Whisper, Gemma, LangChain, and WebRTC streaming.
 
 ---
 
-## 8. Recent Architectural Changes & Updates (Changelog)
+## 9. Recent Architectural Changes & Updates (Changelog)
 
-### A. Candidate-Driven Onboarding Enforcement
-- **HR Cannot Add Candidates**: Per the hiring integrity problem statement, HR recruiters must not manually create candidate profiles. Candidates must self-register, submit their resume/documents, and complete their verification dossier through the **Candidate Portal** (`/candidate/apply`).
-- **Removed HR Buttons & Routes**:
-  - Removed `+ New Candidate` button from the HR sidebar in `frontend/app/dashboard/layout.jsx`.
-  - Removed `+ Add Candidate` button from the Operations Hub in `frontend/app/dashboard/page.jsx`.
-  - Removed `+ Add Candidate` button from the Candidates Directory in `frontend/app/dashboard/candidates/page.jsx`.
-  - Deleted the obsolete manual creation route directory `frontend/app/dashboard/candidates/new/`.
+### A. Complete Interview System Redesign & Role Separation
+- **Separation of Concerns**: Moved voice recording and answer submission to the **Candidate Portal** (`/candidate/interview`). Moved eye gaze tracking, question generation, and AI speech analysis to the **HR Portal** (`/dashboard/candidates/[id]/interview`).
+- **HR Camera Tile Placeholders**: Created reusable `HRCameraTile.jsx` mounted in both portals (Candidate sees HR interviewer tile; HR sees self-preview with broadcast controls).
+- **Rock-Solid Responsive Layout**: Fixed 3-column squishing by implementing a robust 2-column layout (`5 cols + 7 cols`) inside `max-w-7xl mx-auto`. Skills render as flex chips; no 1-letter text wrapping or horizontal overflow.
+- **Eye Movement & Attention Tracking**: Built canvas-based gaze estimation into `CameraMonitorPanel.jsx` with real-time status and look-away counters.
+- **AI-Generated Answer Detection**: Built `CandidateAnswerReview.jsx` with 0–100% AI Likelihood Score, signal breakdown, and manual flag action.
 
-### B. Cleaned HR Top Navigation
-- Removed the redundant `Public Site` button and divider from the HR top bar in `frontend/app/dashboard/layout.jsx`. Clicking the TrustHire logo in the upper-left of the sidebar navigates directly to the Home page (`/`).
+### B. Candidate-Driven Onboarding Enforcement
+- **HR Cannot Add Candidates**: Candidates self-register and submit documents via `/candidate/apply`. Removed obsolete manual creation routes.
 
-### C. Removed Direct Cross-Portal Bridges & Public Profile Bypasses
+### C. Removed Direct Public Profile Bypass ("View Marcus Rivera Dossier")
 - Removed the public "View Marcus Rivera Dossier" button on the landing page (`frontend/app/page.js`), enforcing that all candidate dossiers and trust records remain gated behind the authenticated HR portal.
-- Removed the "Switch to HR Portal →" link from the Candidate Portal navigation header (`frontend/app/candidate/layout.jsx`), maintaining strict role segregation so candidate environments cannot directly bridge into administrative HR routes.
 
-### D. Tailwind CSS v4 & Next.js 16 Turbopack Fix
-- Compiled `@tailwindcss/cli` output into `frontend/app/tailwind.css` and linked it directly in `frontend/app/layout.js`, ensuring all utility classes, colors, gradients, and responsive layouts render properly without Turbopack subprocess conflicts.
-
+### D. Firebase Integration & Persistence
+- Integrated `firebase-admin` and `DatabaseManager` to switch between `MockDB` (demo mode) and `FirebaseDB` (production mode).
 ### E. Firebase Integration & Persistence
 - **Implemented Firestore Backend**: Fully integrated `firebase-admin` into the backend. 
 - **Dynamic Database Switching**: Introduced `DatabaseManager` in `backend/app/db/manager.py`. When `DEMO_MODE=False` is set in `.env`, the system automatically routes all CRUD operations to live Firestore collections instead of in-memory dictionaries.
@@ -283,10 +396,22 @@ pnpm run dev
     6. **Links**: Multi-vector deterministic trust score synthesis.
   - Smoothly finishes onto Step 4 (Submission Confirmation) featuring a 6/6 checks completed summary card.
 
+### H. UI Polish: Header Cleanliness & Horizontal Trust Score Bar
+- **Removed "MVP" & "Acme Enterprise"**:
+  - Removed the `"MVP"` badge next to the TrustHire logo in the dashboard sidebar (`frontend/app/dashboard/layout.jsx`).
+  - Removed `"Acme Enterprise"` from the recruiter profile badge in the dashboard top navigation bar (`frontend/app/dashboard/layout.jsx`), keeping only the clean `"Lead Recruiter"` designation.
+- **Added Horizontal Trust Score Indicator Bars**:
+  - In the Candidates Directory table list view (`frontend/app/dashboard/candidates/page.jsx`), added a sleek horizontal progress bar under the trust score numbers (`87/100`, `42/100`, `64/100`), dynamically filled to the candidate's exact score and colored according to risk levels (green for high trust, red for critical review, amber for needs review).
+  - Also added the matching horizontal score bar to candidate cards (`frontend/components/candidate/CandidateCard.jsx`) for visual consistency across view modes.
+
 ---
 
-## 9. Immediate Next Steps / Roadmap for Contributors
+## 10. Immediate Next Steps / Roadmap for Contributors
 
+1. **Connect Live Whisper Backend**: Connect `POST /api/interviews/{sessionId}/audio` to a local `faster-whisper` instance.
+2. **Connect Live Gemma 4 Model**: Configure `GEMMA_API_BASE_URL` in `backend/.env` targeting local Ollama (`ollama run gemma:7b`).
+3. **WebRTC Video Signaling**: Replace simulated WebRTC tile feeds with live peer-to-peer signaling using Simple-Peer or LiveKit.
+4. **Configure Firebase**: Set `FIREBASE_CREDENTIALS_PATH` and `FIREBASE_PROJECT_ID` in `backend/.env` to persist sessions.
 If you are picking up work on this project, consider these high-leverage enhancements:
 1. **Configure Firebase**: Fill `frontend/.env.local` from `frontend/.env.firebase.example`; enable Email/Password and Email link sign-in; authorize local and production domains; set backend `FIREBASE_CREDENTIALS_PATH` and/or `FIREBASE_PROJECT_ID` for token verification and Firestore persistence. These credentials were not available in this workspace, so real email delivery and production token verification still depend on Firebase setup.
 3. **Real Gemma 4 Connection**: Configure `GEMMA_API_KEY` and `GEMMA_API_BASE_URL` in `backend/.env` to connect to a live Ollama or Vertex AI instance instead of demo mock responses.

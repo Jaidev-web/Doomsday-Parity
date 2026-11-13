@@ -58,7 +58,14 @@ export default function VoiceRecorder({ sessionId, questionId, stream, onTranscr
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
 
-      const mr = new MediaRecorder(micStream, { mimeType: 'audio/webm;codecs=opus' });
+      const audioTracks = micStream.getAudioTracks();
+      if (audioTracks.length === 0) throw new Error('No microphone audio track is available.');
+      const audioStream = new MediaStream(audioTracks);
+      const audioMimeType = 'audio/webm;codecs=opus';
+      const mr = new MediaRecorder(
+        audioStream,
+        MediaRecorder.isTypeSupported(audioMimeType) ? { mimeType: audioMimeType } : undefined
+      );
       mr.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };

@@ -235,15 +235,29 @@ export default function CandidatesListPage() {
                     </TableCell>
                     <TableCell className="text-xs text-slate-600">{candidate.position}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-2.5 h-2.5 rounded-full shrink-0"
-                          style={{ backgroundColor: trustColor }}
-                        />
-                        <span className="text-sm font-bold text-slate-900">
-                          {Math.round(candidate.trust_score)}
-                        </span>
-                        <Badge status={candidate.overall_status} className="ml-1 text-[10px]" />
+                      <div className="space-y-1.5 w-32">
+                        <div className="flex items-center gap-1.5">
+                          <div
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{ backgroundColor: trustColor }}
+                          />
+                          <span className="text-sm font-extrabold text-slate-900 leading-none">
+                            {Math.round(candidate.trust_score)}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-medium leading-none">/100</span>
+                          <Badge status={candidate.overall_status} className="ml-auto text-[9px] px-1.5 py-0" />
+                        </div>
+
+                        {/* Small horizontal bar to show the trust score below the numbers */}
+                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${Math.min(100, Math.max(0, candidate.trust_score))}%`,
+                              backgroundColor: trustColor,
+                            }}
+                          />
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
