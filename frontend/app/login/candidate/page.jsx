@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   Shield,
   User,
@@ -21,23 +20,24 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Captcha } from '@/components/auth/Captcha';
-import { OtpVerification } from '@/components/auth/OtpVerification';
+import { EmailLinkNotice } from '@/components/auth/EmailLinkNotice';
 import { ForgotPasswordFlow } from '@/components/auth/ForgotPasswordFlow';
 import { toast } from '@/components/ui/Toast';
+import { api } from '@/lib/api';
+import { ensureFirebaseReady, sendEmailSignInLink } from '@/lib/firebase';
 
 export default function CandidateAuthPage({ initialTab = 'login' }) {
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState(initialTab); // 'login' | 'signup' | 'forgot' | 'otp'
+  const [activeTab, setActiveTab] = useState(initialTab); // login | signup | forgot | email-link
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Form states
   const [form, setForm] = useState({
-    name: 'Sarah Chen',
-    email: 'sarah.chen@example.com',
-    phone: '+1 (555) 234-5678',
-    password: 'password123',
-    confirmPassword: 'password123',
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirmPassword: '',
   });
 
   // Captcha state
@@ -45,8 +45,9 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
   const [enteredCaptcha, setEnteredCaptcha] = useState('');
   const [captchaError, setCaptchaError] = useState('');
 
-  // OTP flow state
-  const [otpTarget, setOtpTarget] = useState('');
+  // Email-link flow state
+  const [linkTarget, setLinkTarget] = useState('');
+  const [resendingLink, setResendingLink] = useState(false);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -78,7 +79,7 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
     }
   };
 
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
 
     if (!validateCaptcha()) return;
@@ -86,18 +87,32 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
     setLoading(true);
     toast.loading('Authenticating candidate credentials…', { id: 'auth-toast' });
 
-    setTimeout(() => {
+    try {
+      ensureFirebaseReady();
+      const response = await api.auth.login({
+        email: form.email,
+        password: form.password,
+        role: 'candidate',
+      });
+
+      if (response === null || response?.detail) {
+        throw new Error(response?.detail || 'Invalid email or password.');
+      }
+
+      await sendEmailSignInLink({ email: form.email, role: 'candidate', name: response.name });
+      setLinkTarget(form.email);
       setLoading(false);
       toast.dismiss('auth-toast');
-
-      // Trigger 2FA OTP option
-      setOtpTarget(form.email);
-      toast.success('Credentials verified! Sending one-time security code…');
-      setActiveTab('otp');
-    }, 800);
+      toast.success('Credentials verified. Click the sign-in link sent to your email.');
+      setActiveTab('email-link');
+    } catch (err) {
+      setLoading(false);
+      toast.dismiss('auth-toast');
+      toast.error(err?.message || 'Authentication failed. Please try again.');
+    }
   };
 
-  const handleSignupSubmit = (e) => {
+  const handleSignupSubmit = async (e) => {
     e.preventDefault();
 
     if (!form.name || !form.email || !form.password) {
@@ -115,31 +130,52 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
     setLoading(true);
     toast.loading('Creating candidate profile…', { id: 'signup-toast' });
 
-    setTimeout(() => {
+    try {
+      ensureFirebaseReady();
+      const response = await api.auth.signup({
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        role: 'candidate',
+        phone: form.phone,
+        position: 'Candidate',
+      });
+
+      if (response === null || response?.detail) {
+        throw new Error(response?.detail || 'Registration failed. User might already exist.');
+      }
+
+      await sendEmailSignInLink({ email: form.email, role: 'candidate', name: form.name });
+      setLinkTarget(form.email);
       setLoading(false);
       toast.dismiss('signup-toast');
-      setOtpTarget(form.email);
-      toast.success(`Verification code dispatched to ${form.email}`);
-      setActiveTab('otp');
-    }, 900);
+      toast.success(`Account created. Click the sign-in link sent to ${form.email}.`);
+      setActiveTab('email-link');
+    } catch (err) {
+      setLoading(false);
+      toast.dismiss('signup-toast');
+      toast.error(err?.message || 'Registration failed. Please try again.');
+    }
   };
 
-  const handleOtpVerified = () => {
-    toast.success('Account successfully verified! Redirecting to candidate portal…', {
-      duration: 3000,
-    });
-    setTimeout(() => {
-      router.push('/candidate');
-    }, 700);
+  const handleEmailLinkResend = async () => {
+    setResendingLink(true);
+    try {
+      await sendEmailSignInLink({
+        email: linkTarget || form.email,
+        role: 'candidate',
+        name: form.name,
+      });
+      toast.success('A new sign-in link was sent.');
+    } catch (err) {
+      toast.error(err?.message || 'Could not resend the sign-in link.');
+    } finally {
+      setResendingLink(false);
+    }
   };
 
   const handleSocialLogin = (provider) => {
-    toast.loading(`Connecting to ${provider} OAuth…`, { id: 'oauth-toast' });
-    setTimeout(() => {
-      toast.dismiss('oauth-toast');
-      toast.success(`Connected via ${provider}! Redirecting…`);
-      router.push('/candidate');
-    }, 900);
+    toast.error(`${provider} login is not configured for this environment. Please use email sign-in.`);
   };
 
   return (
@@ -266,12 +302,12 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
               <span className="text-[11px] font-mono text-slate-400">v2.0 • Secure</span>
             </div>
 
-            {/* Sub-Views: OTP, Forgot Password, or Main Tabs */}
-            {activeTab === 'otp' ? (
-              <OtpVerification
-                destination={otpTarget || form.email}
-                portalType="candidate"
-                onVerify={handleOtpVerified}
+            {/* Sub-Views: email link, forgot password, or main tabs */}
+            {activeTab === 'email-link' ? (
+              <EmailLinkNotice
+                email={linkTarget || form.email}
+                onResend={handleEmailLinkResend}
+                isResending={resendingLink}
                 onBack={() => setActiveTab('login')}
               />
             ) : activeTab === 'forgot' ? (
@@ -508,7 +544,7 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
                     ) : activeTab === 'login' ? (
                       'Sign In to Candidate Portal'
                     ) : (
-                      'Create Account & Verify OTP'
+                      'Create Account & Send Sign-in Link'
                     )}
                   </Button>
                 </form>
@@ -565,30 +601,8 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
                   </button>
                 </div>
 
-                {/* Pre-seeded demo credentials pill */}
-                <div className="mt-6 p-3 rounded-xl bg-emerald-50/80 border border-emerald-200/80">
-                  <div className="flex items-center justify-between text-xs text-emerald-800 font-semibold mb-1">
-                    <span>⚡ Demo Pre-fill Available</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForm({
-                          name: 'Sarah Chen',
-                          email: 'sarah.chen@example.com',
-                          phone: '+1 (555) 234-5678',
-                          password: 'password123',
-                          confirmPassword: 'password123',
-                        });
-                        toast.success('Pre-filled with demo candidate: Sarah Chen (Score 87)');
-                      }}
-                      className="underline hover:text-emerald-950 font-bold cursor-pointer"
-                    >
-                      Use Sarah Chen
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-emerald-700 leading-snug">
-                    Pre-filled with verified test candidate data. Solve the anti-bot captcha challenge to proceed to OTP verification.
-                  </p>
+                <div className="mt-6 rounded-xl border border-emerald-200/80 bg-emerald-50/80 p-3 text-[11px] leading-snug text-emerald-700">
+                  Sign-in links go to the email address you enter. Use an inbox you can open to finish signing in.
                 </div>
               </>
             )}

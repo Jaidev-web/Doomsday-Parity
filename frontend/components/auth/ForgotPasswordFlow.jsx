@@ -9,6 +9,7 @@ import { toast } from '@/components/ui/Toast';
 export function ForgotPasswordFlow({ portalType = 'candidate', onCancel, onSuccess }) {
   const [step, setStep] = useState('email'); // 'email' | 'otp' | 'new-password' | 'done'
   const [email, setEmail] = useState('');
+  const [expectedOtp, setExpectedOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -31,9 +32,13 @@ export function ForgotPasswordFlow({ portalType = 'candidate', onCancel, onSucce
     toast.loading('Sending verification code…', { id: 'pwd-reset' });
 
     setTimeout(() => {
+      const random = new Uint32Array(1);
+      window.crypto.getRandomValues(random);
+      const code = String(random[0] % 1_000_000).padStart(6, '0');
+      setExpectedOtp(code);
       setIsSubmitting(false);
       toast.dismiss('pwd-reset');
-      toast.success(`Verification code sent to ${email}`);
+      toast.success(`Demo verification code: ${code}`);
       setStep('otp');
     }, 700);
   };
@@ -41,6 +46,14 @@ export function ForgotPasswordFlow({ portalType = 'candidate', onCancel, onSucce
   const handleOtpVerified = () => {
     toast.success('Identity verified. Please set your new password.');
     setStep('new-password');
+  };
+
+  const handleOtpResend = () => {
+    const random = new Uint32Array(1);
+    window.crypto.getRandomValues(random);
+    const code = String(random[0] % 1_000_000).padStart(6, '0');
+    setExpectedOtp(code);
+    toast.success(`Demo verification code: ${code}`);
   };
 
   const handleResetPassword = (e) => {
@@ -75,7 +88,9 @@ export function ForgotPasswordFlow({ portalType = 'candidate', onCancel, onSucce
       <OtpVerification
         destination={email}
         portalType={portalType}
+        expectedOtp={expectedOtp}
         onVerify={handleOtpVerified}
+        onResend={handleOtpResend}
         onBack={() => setStep('email')}
       />
     );
