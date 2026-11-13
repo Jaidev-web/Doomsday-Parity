@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Shield, FileText, Video, CheckCircle, ArrowLeft, User } from 'lucide-react';
+import { RoleSessionGuard } from '@/components/auth/RoleSessionGuard';
 
 export default function CandidateLayout({ children }) {
   const pathname = usePathname();

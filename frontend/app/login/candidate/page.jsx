@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -34,7 +34,7 @@ import {
 
 const DEMO_CANDIDATE_EMAIL = 'test@gmail.com';
 
-export default function CandidateAuthPage({ initialTab = 'login' }) {
+function CandidateAuthPage({ initialTab = 'login' }) {
   const searchParams = useSearchParams();
   const interviewId = searchParams.get('interviewId');
   const [activeTab, setActiveTab] = useState(initialTab); // login | signup | forgot | email-link
@@ -598,5 +598,13 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CandidateLoginPage(props) {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-slate-500">Loading candidate portal…</div>}>
+      <CandidateAuthPage {...props} />
+    </Suspense>
   );
 }
