@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { CheckCircle2, Clock, FileText, Video, ShieldCheck, ArrowRight, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, Clock, FileText, Video, ShieldCheck, ArrowRight } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
@@ -36,12 +36,6 @@ export default function CandidateStatusPage() {
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div>
-        <Link
-          href="/candidate"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 mb-2"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to Candidate Portal
-        </Link>
         <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Your Application Status</h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-1">
           Track the progression of your submitted credentials, verification checks, and interview stage.

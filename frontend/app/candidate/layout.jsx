@@ -1,10 +1,11 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Shield, FileText, Video, CheckCircle, ArrowLeft, User } from 'lucide-react';
 
 export default function CandidateLayout({ children }) {
   const pathname = usePathname();
+  const router = useRouter();
 
   const navItems = [
     { label: 'Portal Home', href: '/candidate', icon: User },
@@ -18,7 +19,18 @@ export default function CandidateLayout({ children }) {
       {/* Candidate Top Header */}
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3 sm:gap-5">
+            {/* Back Button */}
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-emerald-700 hover:bg-slate-100 border border-slate-200 bg-white transition-all shadow-2xs"
+              title="Go back to previous page"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Back</span>
+            </button>
+
             <Link href="/" className="flex items-center gap-2.5">
               <div className="p-1.5 bg-emerald-600 rounded-lg text-white shadow-xs">
                 <Shield className="w-5 h-5" />

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, Video, VideoOff, Mic, MicOff, Shield, AlertTriangle,
+  Video, VideoOff, Mic, MicOff, Shield, AlertTriangle,
   CheckCircle2, Clock, Play, Square, Loader2, XCircle, Send,
   Eye, EyeOff, Wifi, User, Volume2,
 } from 'lucide-react';
@@ -386,9 +386,6 @@ export default function CandidateInterviewPage() {
     return (
       <div className="max-w-2xl mx-auto space-y-6 py-6">
         <div>
-          <Link href="/candidate" className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 mb-2">
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to Candidate Portal
-          </Link>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">AI Technical Interview Room</h1>
           <p className="text-sm text-slate-500 mt-1">TrustHire Proctored Candidate Assessment Environment</p>
           <p className="text-xs text-slate-500 mt-2">Interview for candidate {session?.candidate_id} · Session #{sessionIdRef.current?.slice(-6)}</p>

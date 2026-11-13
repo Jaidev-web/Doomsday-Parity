@@ -6,6 +6,7 @@ import { TrustDistribution } from '@/components/dashboard/ActivityFeed';
 import { DEMO_CANDIDATES } from '@/lib/constants';
 
 export default function ReportsPage() {
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

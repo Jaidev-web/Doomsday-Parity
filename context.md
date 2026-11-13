@@ -404,6 +404,34 @@ pnpm run dev
   - In the Candidates Directory table list view (`frontend/app/dashboard/candidates/page.jsx`), added a sleek horizontal progress bar under the trust score numbers (`87/100`, `42/100`, `64/100`), dynamically filled to the candidate's exact score and colored according to risk levels (green for high trust, red for critical review, amber for needs review).
   - Also added the matching horizontal score bar to candidate cards (`frontend/components/candidate/CandidateCard.jsx`) for visual consistency across view modes.
 
+### I. Collapsible Sidebar & Swapping Transition Animations
+- **Collapsible Sidebar (Open by Default)**:
+  - Added collapsible state `isCollapsed = false` (default open) in `frontend/app/dashboard/layout.jsx`.
+  - Smooth width transition: `w-64` when open and `w-20` when collapsed with `transition-all duration-300 ease-in-out`.
+  - Added collapse/expand controls:
+    - Sidebar header toggle button (`PanelLeftClose`).
+    - Collapsed quick expand action button (`PanelLeft`).
+    - Header search bar quick toggle button (`PanelLeft` / `PanelLeftClose`).
+  - Collapsed state displays centered navigation icons with floating hover tooltips and an interactive compact pulse indicator for Gemma 4 AI status.
+- **Swapping Transition Animations**:
+  - **Sliding Active Pill**: An active indicator backdrop pill (`bg-indigo-50/90 border border-indigo-200/70 shadow-2xs`) glides vertically between navigation items with cubic-bezier physics (`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]`) whenever an element is clicked.
+  - **Left Edge Accent Bar**: An indigo accent bar glides along with the active pill.
+  - **Page Content Swapping**: The `<main>` element includes `key={pathname}` with an animated fade transition (`animate-in fade-in-50 duration-200`) so switching views feels smooth and responsive.
+
+### J. Single Global Back Navigation & Recruiter Identity
+- **Single Back Button per Page**:
+  - Maintained the persistent Back button (`<button onClick={() => router.back()}><ArrowLeft /> Back</button>`) directly in the sticky top navigation bars of both the **HR Dashboard** (`frontend/app/dashboard/layout.jsx`) and the **Candidate Portal** (`frontend/app/candidate/layout.jsx`).
+  - Audited and eliminated all duplicate in-page Back buttons across all views (`candidates/page.jsx`, `reports/page.jsx`, `settings/page.jsx`, `credentials/page.jsx`, `identity/page.jsx`, `candidates/[id]/page.jsx`, `candidates/[id]/interview/page.jsx`, `candidate/page.jsx`, `candidate/apply/page.jsx`, `candidate/status/page.jsx`, `candidate/interview/page.jsx`), ensuring strictly **only 1 Back button/option** exists on every page.
+- **HR Identity Display ("Reiner Hemming")**:
+  - Updated the recruiter profile widget in `frontend/app/dashboard/layout.jsx` to render **"Reiner Hemming"** in muted text directly underneath **"Lead Recruiter"**, matching the profile avatar initials **RH**.
+
+### K. Sidebar Toggle Button Clean-up
+- **Single Sidebar Toggle in `<aside>`**:
+  - Removed the duplicate/redundant secondary sidebar toggle button from the dashboard top navigation header.
+  - Kept strictly **only 1 sidebar toggle button**, cleanly positioned inside the sidebar header itself:
+    - When expanded: clicking the `PanelLeftClose` icon collapses the sidebar to compact icon-only mode (`w-20`).
+    - When collapsed: clicking the centered `PanelLeft` icon expands the sidebar back to its default open state (`w-64`).
+
 ---
 
 ## 10. Immediate Next Steps / Roadmap for Contributors

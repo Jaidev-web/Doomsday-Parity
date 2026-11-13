@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Users, ShieldCheck, AlertTriangle, XOctagon, ArrowRight } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { ActivityFeed, TrustDistribution } from '@/components/dashboard/ActivityFeed';
@@ -14,6 +15,7 @@ import { api } from '@/lib/api';
 import { DEMO_CANDIDATES, DEMO_ACTIVITIES } from '@/lib/constants';
 
 export default function DashboardOverviewPage() {
+  const router = useRouter();
   const [candidates, setCandidates] = useState(DEMO_CANDIDATES);
   const [activities, setActivities] = useState(DEMO_ACTIVITIES);
   const [loading, setLoading] = useState(true);

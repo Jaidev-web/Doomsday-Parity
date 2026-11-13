@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, Video, VideoOff, Mic, MicOff, Shield, AlertTriangle,
+  Video, VideoOff, Mic, MicOff, Shield, AlertTriangle,
   CheckCircle2, Clock, Play, Square, ChevronRight, Clipboard, Eye,
   MessageSquare, FileText, Camera, Sparkles, Loader2, XCircle,
   Monitor, MonitorOff, ExternalLink, Flag, Send, RefreshCw, ThumbsUp,
@@ -526,12 +526,9 @@ export default function HRInterviewMonitorPage() {
       <div className="bg-white border border-slate-200 rounded-xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-xs">
         {/* Candidate Info */}
         <div className="flex items-center gap-3">
-          <Link
-            href={`/dashboard/candidates/${candidateId}`}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
+          <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs shrink-0">
+            {candidate?.name?.charAt(0) || 'C'}
+          </div>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-slate-900">{candidate?.name}</h2>
