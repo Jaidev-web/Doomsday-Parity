@@ -3,13 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 
-from app.routers import candidates, documents, credentials, identity, interviews, trust, ai_assistant, auth
+from app.routers import candidates, documents, credentials, identity, interviews, trust, ai_assistant
 from app.demo.seed import seed_demo_data
 from app.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: seed demo data
+    # Seed demo records in the active in-memory demo database.
     if settings.DEMO_MODE:
         seed_demo_data()
     yield
@@ -40,7 +40,6 @@ app.include_router(identity.router, prefix="/api")
 app.include_router(interviews.router, prefix="/api")
 app.include_router(trust.router, prefix="/api")
 app.include_router(ai_assistant.router, prefix="/api")
-app.include_router(auth.router, prefix="/api")
 
 
 @app.get("/")

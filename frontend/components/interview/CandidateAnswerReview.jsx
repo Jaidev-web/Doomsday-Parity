@@ -13,6 +13,7 @@ export default function CandidateAnswerReview({
   isCandidateSpeaking,
   onFlagAnswer,
   onNextQuestion,
+  showActions = true,
 }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [localFlagged, setLocalFlagged] = useState(false);
@@ -228,7 +229,7 @@ export default function CandidateAnswerReview({
         </div>
 
         {/* HR Action Controls */}
-        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+        {showActions && <div className="flex items-center justify-between pt-2 border-t border-slate-100">
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
@@ -251,7 +252,7 @@ export default function CandidateAnswerReview({
               Dispatch Next Question
             </Button>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

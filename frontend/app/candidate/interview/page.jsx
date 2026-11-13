@@ -104,7 +104,9 @@ export default function CandidateInterviewPage() {
         setPhase('consent');
       })
       .catch((error) => {
-        setSessionError(error.message || 'Could not validate this interview invitation.');
+        setSessionError(error?.status === 404
+          ? 'This interview link has expired or its session was cleared after the backend restarted. Ask the hiring team to launch a new session and send a fresh link.'
+          : error.message || 'Could not validate this interview invitation.');
         setPhase('invalid');
       });
   }, []);
@@ -122,8 +124,13 @@ export default function CandidateInterviewPage() {
           setAwaitingNextQuestion(false);
           setSubmitError('');
         }
-      } catch {
-        // Keep the last received question visible through transient polling errors.
+      } catch (error) {
+        if (mounted && error?.status === 404) {
+          mediaStream?.getTracks().forEach((track) => track.stop());
+          setSessionError('This interview session is no longer available. Ask the hiring team to launch a new session and send you a fresh link.');
+          setPhase('invalid');
+        }
+        // Keep the last received question visible through transient non-404 polling errors.
       }
     };
     const interval = setInterval(refreshQuestion, 1200);

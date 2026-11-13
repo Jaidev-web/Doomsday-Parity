@@ -1,7 +1,5 @@
 allowBuilds:
-  '@firebase/util': set this to true or false
   '@parcel/watcher': set this to true or false
   pnpm: set this to true or false
-  protobufjs: set this to true or false
   sharp: false
   unrs-resolver: false

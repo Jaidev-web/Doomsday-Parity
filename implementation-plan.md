@@ -1,5 +1,7 @@
 # AI-Assisted Candidate Fraud Detection & Verification Platform — Implementation Plan
 
+> Historical proposal from the initial project setup. Its Firebase/Firestore steps are superseded; use `README.md` and `context.md` for the current MongoDB and Nodemailer implementation.
+
 ## Goal Description
 
 Build a functional MVP of **TrustHire** — an AI-assisted candidate fraud detection and verification platform for a 24-hour hackathon. The platform helps recruiters identify potentially fraudulent candidates through credential checking, identity verification, and interview integrity analysis, all powered by Gemma 4 AI.

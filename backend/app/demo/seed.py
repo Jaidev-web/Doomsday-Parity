@@ -2,17 +2,19 @@ from datetime import datetime, timedelta
 from app.db import db
 
 
-def seed_demo_data():
-    """Seed the mock database with 3 demo candidates and their verification data."""
+def seed_demo_data(database=None):
+    """Add missing demo records to the selected database without overwriting data."""
+    target_db = database or db
 
-    if db.list("candidates"):
-        return  # Already seeded
+    def add_if_missing(collection, item):
+        if target_db.get(collection, item["id"]) is None:
+            target_db.add(collection, item)
 
     now = datetime.utcnow()
 
     # ── Candidate 1: Sarah Chen ──────────────────────────────────────
     sarah_id = "cand-sarah-001"
-    db.add("candidates", {
+    add_if_missing("candidates", {
         "id": sarah_id,
         "name": "Sarah Chen",
         "email": "sarah.chen@email.com",
@@ -81,11 +83,11 @@ def seed_demo_data():
             "timestamp": now.isoformat(),
         },
     ]:
-        db.add("verifications", v)
+        add_if_missing("verifications", v)
 
     # Sarah's interview session
     sarah_session_id = "int-sarah-001"
-    db.add("interviews", {
+    add_if_missing("interviews", {
         "id": sarah_session_id,
         "candidate_id": sarah_id,
         "started_at": (now - timedelta(hours=2)).isoformat(),
@@ -97,7 +99,7 @@ def seed_demo_data():
     })
 
     # Sarah's AI history
-    db.add("ai_history", {
+    add_if_missing("ai_history", {
         "id": f"ai-{sarah_id}",
         "candidate_id": sarah_id,
         "conversations": [
@@ -114,7 +116,7 @@ def seed_demo_data():
 
     # ── Candidate 2: Marcus Rivera ───────────────────────────────────
     marcus_id = "cand-marcus-002"
-    db.add("candidates", {
+    add_if_missing("candidates", {
         "id": marcus_id,
         "name": "Marcus Rivera",
         "email": "marcus.rivera@email.com",
@@ -191,10 +193,10 @@ def seed_demo_data():
             "timestamp": now.isoformat(),
         },
     ]:
-        db.add("verifications", v)
+        add_if_missing("verifications", v)
 
     marcus_session_id = "int-marcus-002"
-    db.add("interviews", {
+    add_if_missing("interviews", {
         "id": marcus_session_id,
         "candidate_id": marcus_id,
         "started_at": (now - timedelta(hours=4)).isoformat(),
@@ -217,7 +219,7 @@ def seed_demo_data():
         "answered_questions": 5,
     })
 
-    db.add("ai_history", {
+    add_if_missing("ai_history", {
         "id": f"ai-{marcus_id}",
         "candidate_id": marcus_id,
         "conversations": [
@@ -234,7 +236,7 @@ def seed_demo_data():
 
     # ── Candidate 3: Priya Sharma ────────────────────────────────────
     priya_id = "cand-priya-003"
-    db.add("candidates", {
+    add_if_missing("candidates", {
         "id": priya_id,
         "name": "Priya Sharma",
         "email": "priya.sharma@email.com",
@@ -310,10 +312,10 @@ def seed_demo_data():
             "timestamp": now.isoformat(),
         },
     ]:
-        db.add("verifications", v)
+        add_if_missing("verifications", v)
 
     priya_session_id = "int-priya-003"
-    db.add("interviews", {
+    add_if_missing("interviews", {
         "id": priya_session_id,
         "candidate_id": priya_id,
         "started_at": (now - timedelta(hours=6)).isoformat(),
@@ -329,7 +331,7 @@ def seed_demo_data():
         "answered_questions": 5,
     })
 
-    db.add("ai_history", {
+    add_if_missing("ai_history", {
         "id": f"ai-{priya_id}",
         "candidate_id": priya_id,
         "conversations": [

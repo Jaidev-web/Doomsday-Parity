@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -19,25 +19,15 @@ import {
 import { Button } from '@/components/ui/Button';
 import { Captcha } from '@/components/auth/Captcha';
 import { EmailLinkNotice } from '@/components/auth/EmailLinkNotice';
+import { OtpVerification } from '@/components/auth/OtpVerification';
 import { toast } from '@/components/ui/Toast';
-import { api } from '@/lib/api';
-import { establishFirebaseSession, storeAppSession } from '@/lib/auth-session';
-import {
-  createPasswordAccount,
-  firebaseAuthErrorMessage,
-  getPendingProfile,
-  savePendingProfile,
-  sendEmailSignInLink,
-  sendVerificationEmail,
-  signInWithPassword,
-} from '@/lib/firebase';
-
-const DEMO_CANDIDATE_EMAIL = 'test@gmail.com';
+import { storeAppSession } from '@/lib/auth-session';
+import { mongoAuth } from '@/lib/mongo-auth';
 
 export default function CandidateAuthPage({ initialTab = 'login' }) {
   const searchParams = useSearchParams();
   const interviewId = searchParams.get('interviewId');
-  const [activeTab, setActiveTab] = useState(initialTab); // login | signup | forgot | email-link
+  const [activeTab, setActiveTab] = useState(initialTab); // login | signup | otp | email-link
   const [loginMethod, setLoginMethod] = useState('password');
   const [loading, setLoading] = useState(false);
 
@@ -59,16 +49,11 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
   const [linkTarget, setLinkTarget] = useState('');
   const [resendingLink, setResendingLink] = useState(false);
   const [noticeKind, setNoticeKind] = useState('sign-in');
-  const [verificationUser, setVerificationUser] = useState(null);
-
-  useEffect(() => {
-    if (searchParams.get('verified') === '1') {
-      toast.success('Email verified. Sign in with your password or an email link.');
-    }
-  }, [searchParams]);
+  const [otpEmail, setOtpEmail] = useState('');
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setForm((current) => ({ ...current, [name]: value }));
   };
 
   const validateCaptcha = () => {
@@ -100,30 +85,6 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
       return;
     }
 
-    if (loginMethod === 'password' && email.toLowerCase() === DEMO_CANDIDATE_EMAIL) {
-      if (!form.password) {
-        toast.error('Enter the demo password to continue.');
-        return;
-      }
-      setLoading(true);
-      toast.loading('Signing in to the candidate demo…', { id: 'auth-toast' });
-      try {
-        const result = await api.auth.demoLogin(email, form.password, 'candidate');
-        if (result?.authenticated && result.user) {
-          storeAppSession('candidate', result.user);
-          if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
-          window.location.replace('/candidate');
-          return;
-        }
-        throw new Error(result?.enabled ? 'That demo password is incorrect.' : 'Demo password sign-in is disabled on the backend.');
-      } catch (err) {
-        setLoading(false);
-        toast.dismiss('auth-toast');
-        toast.error(err?.message || 'Could not sign in to the candidate demo.');
-        return;
-      }
-    }
-
     if (!validateCaptcha()) return;
 
     setLoading(true);
@@ -131,36 +92,21 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
 
     try {
       if (loginMethod === 'link') {
-        await sendEmailSignInLink({ email, role: 'candidate' });
+        await mongoAuth.sendSignInLink({ email, role: 'candidate' });
         setLinkTarget(email);
         setNoticeKind('sign-in');
         if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
         setActiveTab('email-link');
         toast.success('Sign-in link sent to your email.');
       } else {
-        const user = await signInWithPassword(email, form.password);
-        const profile = getPendingProfile(email, 'candidate') || {
-          email,
-          role: 'candidate',
-          name: user.displayName || email.split('@')[0],
-        };
-        if (!user.emailVerified) {
-          savePendingProfile(profile);
-          await sendVerificationEmail(user, 'candidate');
-          setVerificationUser(user);
-          setLinkTarget(email);
-          setNoticeKind('verification');
-          setActiveTab('email-link');
-          toast.success('Verify your email before continuing.');
-        } else {
-          await establishFirebaseSession(user, 'candidate', profile);
-          if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
-          window.location.replace('/candidate');
-        }
+        const { user } = await mongoAuth.signInWithPassword({ email, password: form.password, role: 'candidate' });
+        storeAppSession('candidate', user);
+        if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
+        window.location.replace('/candidate');
       }
     } catch (err) {
       toast.dismiss('auth-toast');
-      toast.error(firebaseAuthErrorMessage(err));
+      toast.error(err?.message || 'Could not sign in. Please try again.');
     } finally {
       setLoading(false);
       toast.dismiss('auth-toast');
@@ -188,31 +134,19 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
     setLoading(true);
     toast.loading('Creating your candidate account…', { id: 'signup-toast' });
     try {
-      const profile = { email: form.email.trim(), role: 'candidate', name: form.name.trim(), phone: form.phone || null };
-      savePendingProfile(profile);
-      const user = await createPasswordAccount({ ...profile, password: form.password });
-      await sendVerificationEmail(user, 'candidate');
-      setVerificationUser(user);
-      setLinkTarget(form.email);
-      setNoticeKind('verification');
-      setActiveTab('email-link');
-      toast.success('Account created. Check your email to verify it.');
+      const profile = {
+        email: form.email.trim().toLowerCase(),
+        role: 'candidate',
+        name: form.name.trim(),
+        phone: form.phone.trim() || null,
+        password: form.password,
+      };
+      await mongoAuth.signUp(profile);
+      setOtpEmail(profile.email);
+      setActiveTab('otp');
+      toast.success('Verification code sent. Enter it to finish creating your account.');
     } catch (err) {
-      if (err?.code === 'auth/email-already-in-use') {
-        try {
-          const profile = { email: form.email.trim(), role: 'candidate', name: form.name.trim(), phone: form.phone || null };
-          savePendingProfile(profile);
-          await sendEmailSignInLink({ ...profile, intent: 'set-password' });
-          setLinkTarget(form.email);
-          setNoticeKind('set-password');
-          setActiveTab('email-link');
-          toast.success('Account found. Click the email link to choose a password.');
-        } catch (linkError) {
-          toast.error(firebaseAuthErrorMessage(linkError));
-        }
-      } else {
-        toast.error(firebaseAuthErrorMessage(err));
-      }
+      toast.error(err?.message || 'Could not start signup. Please try again.');
     } finally {
       setLoading(false);
       toast.dismiss('signup-toast');
@@ -222,24 +156,30 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
   const handleEmailLinkResend = async () => {
     setResendingLink(true);
     try {
-      if (noticeKind === 'verification' && verificationUser) {
-        await sendVerificationEmail(verificationUser, 'candidate');
-        toast.success('A new verification email was sent.');
-      } else {
-        await sendEmailSignInLink({
-          email: linkTarget || form.email,
-          role: 'candidate',
-          name: form.name,
-          phone: form.phone,
-          intent: noticeKind === 'set-password' ? 'set-password' : 'sign-in',
-        });
-        toast.success('A new sign-in link was sent.');
-      }
+      await mongoAuth.sendSignInLink({ email: linkTarget || form.email, role: 'candidate' });
+      toast.success('A new sign-in link was sent.');
     } catch (err) {
-      toast.error(firebaseAuthErrorMessage(err));
+      toast.error(err?.message || 'Could not resend the sign-in link.');
     } finally {
       setResendingLink(false);
     }
+  };
+
+  const handleOtpVerify = async (code) => {
+    const { user } = await mongoAuth.verifySignupOtp({ email: otpEmail, role: 'candidate', code });
+    storeAppSession('candidate', user);
+    if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
+    window.location.replace('/candidate');
+  };
+
+  const handleOtpResend = async () => {
+    await mongoAuth.signUp({
+      email: otpEmail,
+      role: 'candidate',
+      name: form.name.trim(),
+      phone: form.phone.trim() || null,
+      password: form.password,
+    });
   };
 
   return (
@@ -367,7 +307,9 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
             </div>
 
             {/* Email link confirmation or sign-in/sign-up form */}
-            {activeTab === 'email-link' ? (
+                    {activeTab === 'otp' ? (
+              <OtpVerification destination={otpEmail} onVerify={handleOtpVerify} onResend={handleOtpResend} onBack={() => setActiveTab('signup')} portalType="candidate" />
+            ) : activeTab === 'email-link' ? (
               <EmailLinkNotice
                 email={linkTarget || form.email}
                 kind={noticeKind}
@@ -481,7 +423,7 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
                   {activeTab === 'login' && loginMethod === 'password' && (
                     <div>
                       <label htmlFor="cand-password" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                        {form.email.trim().toLowerCase() === DEMO_CANDIDATE_EMAIL ? 'Demo Password' : 'Password'}
+                        Password
                       </label>
                       <input
                         id="cand-password"
@@ -493,9 +435,6 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
                         onChange={handleChange}
                         className="w-full px-4 py-2.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
                       />
-                      {form.email.trim().toLowerCase() === DEMO_CANDIDATE_EMAIL && (
-                        <p className="mt-1 text-xs text-slate-500">Local demo password sign-in.</p>
-                      )}
                     </div>
                   )}
 

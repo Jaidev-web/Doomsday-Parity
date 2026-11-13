@@ -21,6 +21,7 @@ export default function HRCameraTile({
   interviewerRole = 'TrustHire Hiring Panel',
   isSpeaking = false,
   className = '',
+  compact = false,
 }) {
   const [cameraActive, setCameraActive] = useState(true);
   const [micActive, setMicActive] = useState(true);
@@ -77,7 +78,7 @@ export default function HRCameraTile({
       </div>
 
       {/* Main Video or Stylized Placeholder Feed */}
-      <div className="relative w-full aspect-video min-h-[140px] sm:min-h-[160px] bg-gradient-to-b from-slate-800 to-slate-950 flex items-center justify-center overflow-hidden">
+      <div className={`relative w-full aspect-video ${compact ? 'min-h-0' : 'min-h-[140px] sm:min-h-[160px]'} bg-gradient-to-b from-slate-800 to-slate-950 flex items-center justify-center overflow-hidden`}>
         {stream && cameraActive ? (
           <video
             ref={videoRef}
@@ -129,10 +130,10 @@ export default function HRCameraTile({
       </div>
 
       {/* Bottom Controls / Info Bar */}
-      <div className="bg-slate-950/90 border-t border-slate-800 px-3 py-2 flex items-center justify-between text-xs text-slate-400">
+      <div className={`bg-slate-950/90 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 ${compact ? 'gap-1 px-1.5 py-1' : 'px-3 py-2'}`}>
         <div className="flex items-center gap-1.5 truncate">
           <Shield className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-          <span className="text-[11px] text-slate-300 truncate">
+          <span className={`text-slate-300 truncate ${compact ? 'text-[9px]' : 'text-[11px]'}`}>
             {mode === 'hr' ? 'Broadcasting live to candidate' : 'Verified TrustHire Interviewer'}
           </span>
         </div>
@@ -142,7 +143,7 @@ export default function HRCameraTile({
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={() => setMicActive(!micActive)}
-              className={`p-1.5 rounded-lg text-xs transition-colors ${
+              className={`flex h-11 w-11 items-center justify-center rounded-lg text-xs transition-colors ${
                 micActive ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-rose-500/20 text-rose-400'
               }`}
               title={micActive ? 'Mute microphone' : 'Unmute microphone'}
@@ -152,7 +153,7 @@ export default function HRCameraTile({
 
             <button
               onClick={() => setCameraActive(!cameraActive)}
-              className={`p-1.5 rounded-lg text-xs transition-colors ${
+              className={`flex h-11 w-11 items-center justify-center rounded-lg text-xs transition-colors ${
                 cameraActive ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-rose-500/20 text-rose-400'
               }`}
               title={cameraActive ? 'Turn camera off' : 'Turn camera on'}

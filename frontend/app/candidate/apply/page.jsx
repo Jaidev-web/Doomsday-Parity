@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -32,6 +32,8 @@ export default function CandidateApplyPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [submittedCandidateId, setSubmittedCandidateId] = useState(null);
+  const [submittedDocuments, setSubmittedDocuments] = useState([]);
+  const [submitError, setSubmitError] = useState('');
 
   // Verification animation modal state
   const [showVerificationModal, setShowVerificationModal] = useState(false);
@@ -51,10 +53,26 @@ export default function CandidateApplyPage() {
   const [idFile, setIdFile] = useState(null);
   const [errors, setErrors] = useState({});
 
+  useEffect(() => {
+    try {
+      const session = JSON.parse(window.sessionStorage.getItem('trusthire_candidate_session') || 'null');
+      if (!session) return;
+      setFormData((current) => ({
+        ...current,
+        name: current.name || session.name || '',
+        email: current.email || session.email || '',
+        phone: current.phone || session.phone || '',
+      }));
+      setSubmittedCandidateId(session.candidateId || null);
+    } catch {
+      // An invalid local session is handled by the candidate portal session guard.
+    }
+  }, []);
+
   const validateStep1 = () => {
     const errs = {};
     if (!formData.name.trim()) errs.name = 'Full name is required';
-    if (!formData.email.trim()) errs.email = 'Valid email is required';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) errs.email = 'Enter a valid email address';
     if (!formData.position.trim()) errs.position = 'Position applied for is required';
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -88,40 +106,74 @@ export default function CandidateApplyPage() {
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
+    if (!validateStep1()) {
+      setCurrentStep(1);
+      return;
+    }
+    if (!resumeFile) {
+      setSubmitError('Upload your resume before submitting the application.');
+      return;
+    }
+
     setSubmitting(true);
-    setVerificationStage('credentials');
-    setShowVerificationModal(true);
+    setSubmitError('');
 
     try {
-      const res = await api.candidates.create(formData);
-      const newId = res?.id || 'cand-' + Date.now();
+      let candidateSession = null;
+      try {
+        candidateSession = JSON.parse(window.sessionStorage.getItem('trusthire_candidate_session') || 'null');
+      } catch {
+        candidateSession = null;
+      }
+
+      const optionalValue = (value) => value.trim() || null;
+      const candidateData = {
+        name: formData.name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        position: formData.position.trim(),
+        phone: optionalValue(formData.phone),
+        linkedin_url: optionalValue(formData.linkedin_url),
+        github_url: optionalValue(formData.github_url),
+      };
+      const res = candidateSession?.candidateId
+        ? await api.candidates.update(candidateSession.candidateId, candidateData)
+        : await api.candidates.create(candidateData);
+      const newId = res?.id;
+      if (!newId) throw new Error('The server did not return a candidate record ID.');
       setSubmittedCandidateId(newId);
-
-      // Upload resume if provided
-      if (resumeFile) {
-        const resumeData = new FormData();
-        resumeData.append('document_type', 'resume');
-        resumeData.append('file', resumeFile);
-        await api.documents.upload(newId, resumeData);
+      if (candidateSession) {
+        window.sessionStorage.setItem('trusthire_candidate_session', JSON.stringify({ ...candidateSession, candidateId: newId }));
       }
 
-      // Upload cert if provided
-      if (certFile) {
-        const certData = new FormData();
-        certData.append('document_type', 'certificate');
-        certData.append('file', certFile);
-        await api.documents.upload(newId, certData);
+      const files = [
+        ['resume', resumeFile],
+        ['certificate', certFile],
+        ['id_document', idFile],
+      ].filter(([, file]) => file);
+      const uploaded = [];
+      for (const [documentType, file] of files) {
+        const payload = new FormData();
+        payload.append('document_type', documentType);
+        payload.append('file', file);
+        const saved = await api.documents.upload(newId, payload);
+        if (saved?.candidate_id !== newId || !saved?.id) {
+          throw new Error(`The server did not confirm that ${file.name} was saved to this candidate record.`);
+        }
+        uploaded.push(saved);
       }
 
-      // Upload ID if provided
-      if (idFile) {
-        const idData = new FormData();
-        idData.append('document_type', 'id_document');
-        idData.append('file', idFile);
-        await api.documents.upload(newId, idData);
-      }
+      setSubmittedDocuments(uploaded);
+      setVerificationStage('credentials');
+      setShowVerificationModal(true);
     } catch (err) {
       console.error('Submission error:', err);
+      if (/email:.*(valid email|@-sign|email address)/i.test(err?.message || '')) {
+        setErrors((current) => ({ ...current, email: 'Enter a valid email address, for example name@example.com.' }));
+        setCurrentStep(1);
+        setSubmitError('');
+        return;
+      }
+      setSubmitError(err?.message || 'Could not save your application and documents. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -189,6 +241,7 @@ export default function CandidateApplyPage() {
           </div>
 
           {/* Form Card */}
+          {submitError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{submitError}</div>}
           <Card className="border-slate-200 shadow-xs">
             <CardContent className="p-6">
               {currentStep === 1 && (
@@ -204,10 +257,16 @@ export default function CandidateApplyPage() {
                     />
                     <Input
                       label="Email Address *"
+                      name="email"
                       type="email"
+                      autoComplete="email"
                       placeholder="sarah.chen@example.com"
                       value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      onChange={(e) => {
+                        const email = e.target.value;
+                        setFormData((current) => ({ ...current, email }));
+                      }}
+                      helperText="Use an address like name@example.com."
                       error={errors.email}
                     />
                   </div>
@@ -347,6 +406,19 @@ export default function CandidateApplyPage() {
             <p className="text-sm text-slate-600 max-w-lg mx-auto">
               Your credentials and documents have been checked by TrustHire's multi-vector integrity engine.
             </p>
+          </div>
+
+          <div className="mx-auto w-full max-w-md rounded-xl border border-emerald-200 bg-white p-4 text-left">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">Saved to your application</h3>
+            <p className="mt-1 text-[11px] text-slate-500">Candidate record: <span className="font-mono">{submittedCandidateId}</span></p>
+            <ul className="mt-3 space-y-2">
+              {submittedDocuments.map((document) => (
+                <li key={document.id} className="flex items-center justify-between gap-3 text-xs">
+                  <span className="min-w-0 truncate text-slate-700">{document.document_type.replace('_', ' ')} · {document.filename}</span>
+                  <span className="shrink-0 font-semibold text-emerald-700">{document.status}</span>
+                </li>
+              ))}
+            </ul>
           </div>
 
           {/* 6-Vector Verification Badges Summary */}

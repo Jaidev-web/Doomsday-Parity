@@ -29,7 +29,9 @@ async function strictInterviewFetch(endpoint, options = {}) {
       const body = await res.json();
       detail = body.detail || detail;
     } catch {}
-    throw new Error(detail);
+    const error = new Error(detail);
+    error.status = res.status;
+    throw error;
   }
   return res.json();
 }

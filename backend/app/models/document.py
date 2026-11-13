@@ -21,3 +21,4 @@ class DocumentResponse(BaseModel):
     status: str = "uploaded"  # uploaded, processing, analyzed
     extracted_text: Optional[str] = None
     metadata: Optional[dict] = None
+    storage_path: Optional[str] = None

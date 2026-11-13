@@ -17,6 +17,14 @@ async function safeFetch(endpoint, options = {}) {
       try {
         const body = await res.json();
         if (typeof body?.detail === 'string') detail = body.detail;
+        else if (Array.isArray(body?.detail)) {
+          detail = body.detail.map((issue) => {
+            const field = Array.isArray(issue?.loc) ? issue.loc.filter((part) => part !== 'body').join('.') : '';
+            return `${field ? `${field}: ` : ''}${issue?.msg || 'Invalid value'}`;
+          }).join('; ');
+        } else if (body?.detail && typeof body.detail === 'object') {
+          detail = JSON.stringify(body.detail);
+        }
       } catch {}
       throw new Error(detail);
     }
@@ -40,18 +48,18 @@ export const api = {
       return DEMO_CANDIDATES.find((c) => c.id === id) || DEMO_CANDIDATES[0];
     },
     create: async (candidateData) => {
-      const data = await safeFetch('/api/candidates', {
+      return safeFetch('/api/candidates/', {
         method: 'POST',
         body: JSON.stringify(candidateData),
+        throwOnError: true,
       });
-      return data;
     },
     update: async (id, candidateData) => {
-      const data = await safeFetch(`/api/candidates/${id}`, {
+      return safeFetch(`/api/candidates/${id}`, {
         method: 'PUT',
         body: JSON.stringify(candidateData),
+        throwOnError: true,
       });
-      return data;
     },
     delete: async (id) => {
       return safeFetch(`/api/candidates/${id}`, { method: 'DELETE' });
@@ -59,27 +67,22 @@ export const api = {
   },
   documents: {
     upload: async (candidateId, formData) => {
-      try {
-        const res = await fetch(`${API_BASE}/api/candidates/${candidateId}/documents`, {
-          method: 'POST',
-          body: formData,
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
-      } catch (err) {
-        console.warn('Doc upload error:', err);
-        return {
-          id: 'doc-' + Date.now(),
-          candidate_id: candidateId,
-          filename: 'uploaded-doc.pdf',
-          status: 'analyzed',
-          metadata: { size_kb: 120 },
-        };
+      const res = await fetch(`${API_BASE}/api/candidates/${candidateId}/documents`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        let detail = `Document upload failed (${res.status})`;
+        try {
+          const body = await res.json();
+          if (typeof body?.detail === 'string') detail = body.detail;
+        } catch {}
+        throw new Error(detail);
       }
+      return res.json();
     },
     list: async (candidateId) => {
-      const data = await safeFetch(`/api/candidates/${candidateId}/documents`);
-      return data || [];
+      return safeFetch(`/api/candidates/${candidateId}/documents`, { throwOnError: true });
     },
   },
   credentials: {
@@ -148,22 +151,6 @@ export const api = {
       const data = await safeFetch(`/api/candidates/${candidateId}/ai/history`);
       if (data) return data;
       return { candidate_id: candidateId, conversations: [] };
-    },
-  },
-  auth: {
-    demoLogin: async (email, password, role) => {
-      return safeFetch('/api/auth/demo-login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password, role }),
-        throwOnError: true,
-      });
-    },
-    verifyToken: async (token, role, profile = {}) => {
-      return safeFetch('/api/auth/verify-token', {
-        method: 'POST',
-        body: JSON.stringify({ token, role, ...profile }),
-        throwOnError: true,
-      });
     },
   },
 };

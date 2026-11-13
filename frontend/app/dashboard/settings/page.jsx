@@ -40,7 +40,7 @@ export default function SettingsPage() {
               <div>
                 <p className="text-sm font-semibold text-slate-900">In-Memory Mock Database (Demo Mode)</p>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Pre-seeds Sarah Chen, Marcus Rivera, and Priya Sharma for instant judge demos without requiring external Firebase credentials.
+                  Pre-seeds Sarah Chen, Marcus Rivera, and Priya Sharma for instant judge demos without requiring external database credentials.
                 </p>
               </div>
               <input

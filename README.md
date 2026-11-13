@@ -24,12 +24,12 @@ TrustHire is a comprehensive hiring integrity platform that uses AI to verify ca
                                 ┌────────┼────────────┐
                                 │        │            │
                            ┌────▼───┐ ┌──▼─────┐ ┌───▼──────┐
-                           │Gemma 4 │ │Firebase│ │ In-Memory│
-                           │  AI    │ │  (opt) │ │ Mock DB  │
+                           │Gemma 4 │ │MongoDB │ │ In-Memory│
+                           │  AI    │ │ Atlas  │ │ Mock DB  │
                            └────────┘ └────────┘ └──────────┘
 ```
 
-The frontend communicates with the backend via REST API calls. The backend orchestrates verification modules, AI analysis, and data storage. Firebase is optional — the app runs fully with an in-memory mock database and demo data out of the box.
+The frontend communicates with the backend via REST API calls. The backend orchestrates verification modules, AI analysis, and data storage. MongoDB Atlas stores persistent data; in-memory demo data is available when `DEMO_MODE=true`.
 
 ---
 
@@ -59,7 +59,7 @@ Conversational AI powered by Gemma 4 that can analyze resumes, compare documents
 | Frontend   | Next.js 15, React 19, Tailwind CSS  |
 | Backend    | Python 3.13, FastAPI, Pydantic      |
 | AI         | Gemma 4 (optional, mocked in demo)  |
-| Storage    | Firebase (optional), In-Memory DB   |
+| Storage    | MongoDB Atlas, In-Memory demo DB    |
 | Documents  | PyPDF2, python-docx, Pillow         |
 
 ---
@@ -77,8 +77,8 @@ Conversational AI powered by Gemma 4 that can analyze resumes, compare documents
 git clone <repo-url> Doomsday-Parity
 cd Doomsday-Parity
 cp .env.example .env
-cp backend/.env.example backend/.env
-cp frontend/.env.firebase.example frontend/.env.local
+cp .env.example backend/.env
+cp .env.example frontend/.env.local
 ```
 
 ### 2. Start the Backend
@@ -108,23 +108,22 @@ Open `http://localhost:3000` in your browser.
 | Variable                   | Default                  | Description                                      |
 |----------------------------|--------------------------|--------------------------------------------------|
 | `NEXT_PUBLIC_API_URL`      | `http://localhost:8000`  | Backend API URL for the frontend                 |
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | *(Firebase web app value)* | Firebase Authentication client configuration |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | *(Firebase web app value)* | Firebase Authentication client configuration |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | *(Firebase web app value)* | Firebase Authentication client configuration |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | *(Firebase web app value)* | Firebase Authentication client configuration |
 | `DEMO_MODE`               | `true`                   | Enable demo mode with seeded data & mock AI      |
-| `DEMO_AUTH_ENABLED` | `false` | Allow configured demo-account password sign-in; keep disabled outside local demos |
-| `FIREBASE_CREDENTIALS_PATH` | *(empty)*              | Path to Firebase service account JSON            |
-| `FIREBASE_PROJECT_ID` | *(empty)*              | Firebase project ID used by the backend Admin SDK |
-| `FIREBASE_STORAGE_BUCKET`  | *(empty)*               | Firebase Storage bucket name                     |
+| `DATABASE_BACKEND` | `mongodb` | Persistent data store when `DEMO_MODE=false` |
+| `MONGODB_URI` | *(empty)* | Private MongoDB Atlas connection string (needed when `DEMO_MODE=false`) |
+| `MONGODB_DATABASE` | `trusthire` | MongoDB database name |
+| `AUTH_OTP_SECRET` | *(random secret)* | Server-only HMAC key for OTP and sign-in-link tokens |
+| `GMAIL_USER` | *(sender Gmail)* | Gmail address used by Nodemailer |
+| `GMAIL_APP_PASSWORD` | *(Gmail app password)* | Server-only Gmail app password; keep in ignored `frontend/.env.local` |
+| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | Public app origin used when constructing email links |
 | `GEMMA_API_KEY`            | *(empty)*                | API key for Gemma 4 AI service                   |
 | `GEMMA_API_BASE_URL`       | *(empty)*                | Base URL for Gemma 4 API endpoint                |
 | `GEMMA_MODEL`              | `gemma-4`                | Gemma model identifier                           |
-Email sign-in links are sent by Firebase Authentication. Configure the Firebase web app in `frontend/.env.local`, enable Email/Password and Email link sign-in in Firebase Authentication, and add the app domain to Authorized domains. During local development, add `localhost` as an authorized domain. Firebase's Email Link sign-in requires Email/Password and Email Link providers enabled in the Firebase console.
+Candidate and HR signup, password login, and click-to-sign-in links use the Next.js MongoDB auth API. Set `MONGODB_URI`, `MONGODB_DATABASE`, `AUTH_OTP_SECRET`, `GMAIL_USER`, and `GMAIL_APP_PASSWORD` in ignored `frontend/.env.local`. Signup stores a pending OTP challenge in `auth_otps`; the user profile is added to `users` only after the correct, unexpired code is verified. Passwords are stored as scrypt hashes. Sign-in links are one-time tokens stored as hashes in `auth_links`.
 
-The backend also needs Firebase Admin credentials to verify clicked sign-in links. Copy `backend/.env.example` to `backend/.env`, set `FIREBASE_PROJECT_ID` to the same project as `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, and set `FIREBASE_CREDENTIALS_PATH` to a Firebase service account JSON file. In Firebase Console, create a private key under **Project settings → Service accounts** and store it locally, for example as `backend/firebase-credentials.json` (this filename is ignored by git). With the documented `cd backend` startup command, set `FIREBASE_CREDENTIALS_PATH=./firebase-credentials.json`. Never commit or share the service account JSON. SQL setup is not needed.
+To persist application data and uploaded documents in MongoDB Atlas, set the Atlas URI privately in ignored `backend/.env` and `frontend/.env.local`, then set `DEMO_MODE=false`, `DATABASE_BACKEND=mongodb`, and `MONGODB_DATABASE=trusthire`. The backend creates the `users`, `auth_otps`, `auth_links`, `candidates`, `documents`, `verifications`, `interviews`, and `ai_history` collections and indexes; GridFS stores uploaded originals in `candidate_documents.files` and `candidate_documents.chunks`. Candidate and HR signup, password login, and email-link sign-in use the MongoDB auth API; new accounts enter `users` only after email OTP verification. Passwords are stored as scrypt hashes. Candidate applications are linked to candidate records by user ID.
 
-For local walkthroughs, the backend supports a password bypass for configured candidate and HR demo accounts. Set `DEMO_AUTH_ENABLED=true` and supply their credentials in `backend/.env`; it only authenticates these accounts while `DEMO_MODE=true`. The local credentials are stored in the ignored `backend/.env`. Keep this feature disabled in production.
+To add the three sample candidates, their verification records, interview sessions, and AI history to MongoDB without overwriting existing records, configure the MongoDB settings and run `cd backend && python3 seed_mongodb_demo.py`.
 
 ---
 
@@ -132,7 +131,7 @@ For local walkthroughs, the backend supports a password bypass for configured ca
 
 When `DEMO_MODE=true` (the default), the app runs fully self-contained:
 
-- **No external services required** — no Firebase, no AI API keys needed
+- **No external services required in demo mode** — MongoDB and AI services are optional for the local demo
 - **3 pre-seeded demo candidates** with complete verification data
 - **AI responses are mocked** with realistic `[Demo Mode]` labeled output
 - **All verification modules return simulated results** so you can explore the full UI immediately
@@ -156,7 +155,7 @@ Doomsday-Parity/
 │       ├── main.py           # App entry point, CORS, router registration
 │       ├── config.py         # Settings via pydantic-settings
 │       ├── models/           # Pydantic data models
-│       ├── db/               # Mock database & Firebase stub
+│       ├── db/               # In-memory mock and MongoDB adapter
 │       ├── demo/             # Demo data seeding
 │       ├── services/         # Business logic (AI, credentials, identity, etc.)
 │       └── routers/          # API route handlers

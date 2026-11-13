@@ -12,9 +12,13 @@ router = APIRouter(prefix="/candidates", tags=["candidates"])
 @router.post("/", response_model=CandidateResponse, status_code=201)
 async def create_candidate(candidate: CandidateCreate):
     now = datetime.utcnow()
+    email = str(candidate.email).lower()
+    candidate_accounts = db.list("users", filter_by={"email": email, "role": "candidate"})
     data = {
         "id": str(uuid.uuid4()),
         **candidate.model_dump(),
+        "email": email,
+        "user_id": candidate_accounts[0]["id"] if candidate_accounts else None,
         "trust_score": 0.0,
         "overall_status": "pending",
         "credential_status": "pending",
@@ -25,6 +29,8 @@ async def create_candidate(candidate: CandidateCreate):
         "updated_at": now.isoformat(),
     }
     db.add("candidates", data)
+    if candidate_accounts:
+        db.update("users", candidate_accounts[0]["id"], {"candidate_id": data["id"]})
     return data
 
 
