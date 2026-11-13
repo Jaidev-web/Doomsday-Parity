@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   Shield,
   User,
@@ -19,10 +20,25 @@ import { Button } from '@/components/ui/Button';
 import { Captcha } from '@/components/auth/Captcha';
 import { EmailLinkNotice } from '@/components/auth/EmailLinkNotice';
 import { toast } from '@/components/ui/Toast';
-import { ensureFirebaseReady, sendEmailSignInLink } from '@/lib/firebase';
+import { api } from '@/lib/api';
+import { establishFirebaseSession, storeAppSession } from '@/lib/auth-session';
+import {
+  createPasswordAccount,
+  firebaseAuthErrorMessage,
+  getPendingProfile,
+  savePendingProfile,
+  sendEmailSignInLink,
+  sendVerificationEmail,
+  signInWithPassword,
+} from '@/lib/firebase';
+
+const DEMO_CANDIDATE_EMAIL = 'test@gmail.com';
 
 export default function CandidateAuthPage({ initialTab = 'login' }) {
+  const searchParams = useSearchParams();
+  const interviewId = searchParams.get('interviewId');
   const [activeTab, setActiveTab] = useState(initialTab); // login | signup | forgot | email-link
+  const [loginMethod, setLoginMethod] = useState('password');
   const [loading, setLoading] = useState(false);
 
   // Form states
@@ -30,6 +46,8 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
     name: '',
     email: '',
     phone: '',
+    password: '',
+    confirmPassword: '',
   });
 
   // Captcha state
@@ -40,6 +58,14 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
   // Email-link flow state
   const [linkTarget, setLinkTarget] = useState('');
   const [resendingLink, setResendingLink] = useState(false);
+  const [noticeKind, setNoticeKind] = useState('sign-in');
+  const [verificationUser, setVerificationUser] = useState(null);
+
+  useEffect(() => {
+    if (searchParams.get('verified') === '1') {
+      toast.success('Email verified. Sign in with your password or an email link.');
+    }
+  }, [searchParams]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -64,83 +90,156 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
     setActiveTab(newTab);
     setCaptchaError('');
     setEnteredCaptcha('');
-    if (newTab === 'signup') {
-      toast.info('Switched to Candidate Registration');
-    } else if (newTab === 'login') {
-      toast.info('Switched to Candidate Sign In');
-    }
   };
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
+    const email = form.email.trim();
+    if (!email) {
+      toast.error('Enter your email address.');
+      return;
+    }
+
+    if (loginMethod === 'password' && email.toLowerCase() === DEMO_CANDIDATE_EMAIL) {
+      if (!form.password) {
+        toast.error('Enter the demo password to continue.');
+        return;
+      }
+      setLoading(true);
+      toast.loading('Signing in to the candidate demo…', { id: 'auth-toast' });
+      try {
+        const result = await api.auth.demoLogin(email, form.password, 'candidate');
+        if (result?.authenticated && result.user) {
+          storeAppSession('candidate', result.user);
+          if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
+          window.location.replace('/candidate');
+          return;
+        }
+        throw new Error(result?.enabled ? 'That demo password is incorrect.' : 'Demo password sign-in is disabled on the backend.');
+      } catch (err) {
+        setLoading(false);
+        toast.dismiss('auth-toast');
+        toast.error(err?.message || 'Could not sign in to the candidate demo.');
+        return;
+      }
+    }
 
     if (!validateCaptcha()) return;
 
     setLoading(true);
-    toast.loading('Sending your secure sign-in link…', { id: 'auth-toast' });
+    toast.loading(loginMethod === 'password' ? 'Signing in…' : 'Sending your secure sign-in link…', { id: 'auth-toast' });
 
     try {
-      ensureFirebaseReady();
-      await sendEmailSignInLink({ email: form.email, role: 'candidate' });
-      setLinkTarget(form.email);
-      setLoading(false);
-      toast.dismiss('auth-toast');
-      toast.success('Click the sign-in link sent to your email to continue.');
-      setActiveTab('email-link');
+      if (loginMethod === 'link') {
+        await sendEmailSignInLink({ email, role: 'candidate' });
+        setLinkTarget(email);
+        setNoticeKind('sign-in');
+        if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
+        setActiveTab('email-link');
+        toast.success('Sign-in link sent to your email.');
+      } else {
+        const user = await signInWithPassword(email, form.password);
+        const profile = getPendingProfile(email, 'candidate') || {
+          email,
+          role: 'candidate',
+          name: user.displayName || email.split('@')[0],
+        };
+        if (!user.emailVerified) {
+          savePendingProfile(profile);
+          await sendVerificationEmail(user, 'candidate');
+          setVerificationUser(user);
+          setLinkTarget(email);
+          setNoticeKind('verification');
+          setActiveTab('email-link');
+          toast.success('Verify your email before continuing.');
+        } else {
+          await establishFirebaseSession(user, 'candidate', profile);
+          if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
+          window.location.replace('/candidate');
+        }
+      }
     } catch (err) {
+      toast.dismiss('auth-toast');
+      toast.error(firebaseAuthErrorMessage(err));
+    } finally {
       setLoading(false);
       toast.dismiss('auth-toast');
-      toast.error(err?.message || 'Authentication failed. Please try again.');
     }
   };
 
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
 
-    if (!form.name || !form.email) {
+    if (!form.name || !form.email || !form.password || !form.confirmPassword) {
       toast.error('Please complete all required fields.');
+      return;
+    }
+    if (form.password.length < 8) {
+      toast.error('Choose a password with at least 8 characters.');
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      toast.error('The passwords do not match.');
       return;
     }
 
     if (!validateCaptcha()) return;
 
     setLoading(true);
-    toast.loading('Sending your account sign-in link…', { id: 'signup-toast' });
-
+    toast.loading('Creating your candidate account…', { id: 'signup-toast' });
     try {
-      ensureFirebaseReady();
-      await sendEmailSignInLink({ email: form.email, role: 'candidate', name: form.name, phone: form.phone });
+      const profile = { email: form.email.trim(), role: 'candidate', name: form.name.trim(), phone: form.phone || null };
+      savePendingProfile(profile);
+      const user = await createPasswordAccount({ ...profile, password: form.password });
+      await sendVerificationEmail(user, 'candidate');
+      setVerificationUser(user);
       setLinkTarget(form.email);
-      setLoading(false);
-      toast.dismiss('signup-toast');
-      toast.success(`Click the sign-in link sent to ${form.email} to finish creating your account.`);
+      setNoticeKind('verification');
       setActiveTab('email-link');
+      toast.success('Account created. Check your email to verify it.');
     } catch (err) {
+      if (err?.code === 'auth/email-already-in-use') {
+        try {
+          const profile = { email: form.email.trim(), role: 'candidate', name: form.name.trim(), phone: form.phone || null };
+          savePendingProfile(profile);
+          await sendEmailSignInLink({ ...profile, intent: 'set-password' });
+          setLinkTarget(form.email);
+          setNoticeKind('set-password');
+          setActiveTab('email-link');
+          toast.success('Account found. Click the email link to choose a password.');
+        } catch (linkError) {
+          toast.error(firebaseAuthErrorMessage(linkError));
+        }
+      } else {
+        toast.error(firebaseAuthErrorMessage(err));
+      }
+    } finally {
       setLoading(false);
       toast.dismiss('signup-toast');
-      toast.error(err?.message || 'Registration failed. Please try again.');
     }
   };
 
   const handleEmailLinkResend = async () => {
     setResendingLink(true);
     try {
-      await sendEmailSignInLink({
-        email: linkTarget || form.email,
-        role: 'candidate',
-        name: form.name,
-        phone: form.phone,
-      });
-      toast.success('A new sign-in link was sent.');
+      if (noticeKind === 'verification' && verificationUser) {
+        await sendVerificationEmail(verificationUser, 'candidate');
+        toast.success('A new verification email was sent.');
+      } else {
+        await sendEmailSignInLink({
+          email: linkTarget || form.email,
+          role: 'candidate',
+          name: form.name,
+          phone: form.phone,
+          intent: noticeKind === 'set-password' ? 'set-password' : 'sign-in',
+        });
+        toast.success('A new sign-in link was sent.');
+      }
     } catch (err) {
-      toast.error(err?.message || 'Could not resend the sign-in link.');
+      toast.error(firebaseAuthErrorMessage(err));
     } finally {
       setResendingLink(false);
     }
-  };
-
-  const handleSocialLogin = (provider) => {
-    toast.error(`${provider} login is not configured for this environment. Please use email sign-in.`);
   };
 
   return (
@@ -271,6 +370,7 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
             {activeTab === 'email-link' ? (
               <EmailLinkNotice
                 email={linkTarget || form.email}
+                kind={noticeKind}
                 onResend={handleEmailLinkResend}
                 isResending={resendingLink}
                 onBack={() => setActiveTab('login')}
@@ -313,6 +413,17 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
                       : 'Join TrustHire to submit verified credentials and build your trust score.'}
                   </p>
                 </div>
+
+                {activeTab === 'login' && (
+                  <div className="mb-4 flex rounded-xl bg-slate-100 p-1" aria-label="Sign-in method">
+                    <button type="button" onClick={() => setLoginMethod('password')} className={`flex-1 rounded-lg py-2 text-xs font-semibold ${loginMethod === 'password' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600'}`}>
+                      Password
+                    </button>
+                    <button type="button" onClick={() => setLoginMethod('link')} className={`flex-1 rounded-lg py-2 text-xs font-semibold ${loginMethod === 'link' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600'}`}>
+                      Email sign-in link
+                    </button>
+                  </div>
+                )}
 
                 {/* Form Body */}
                 <form
@@ -366,6 +477,40 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
                       />
                     </div>
                   </div>
+
+                  {activeTab === 'login' && loginMethod === 'password' && (
+                    <div>
+                      <label htmlFor="cand-password" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                        {form.email.trim().toLowerCase() === DEMO_CANDIDATE_EMAIL ? 'Demo Password' : 'Password'}
+                      </label>
+                      <input
+                        id="cand-password"
+                        name="password"
+                        type="password"
+                        required
+                        autoComplete="current-password"
+                        value={form.password}
+                        onChange={handleChange}
+                        className="w-full px-4 py-2.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
+                      />
+                      {form.email.trim().toLowerCase() === DEMO_CANDIDATE_EMAIL && (
+                        <p className="mt-1 text-xs text-slate-500">Local demo password sign-in.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'signup' && (
+                    <>
+                      <div>
+                        <label htmlFor="cand-password" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Password</label>
+                        <input id="cand-password" name="password" type="password" required minLength={8} autoComplete="new-password" value={form.password} onChange={handleChange} className="w-full px-4 py-2.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors" />
+                      </div>
+                      <div>
+                        <label htmlFor="cand-confirm-password" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Confirm Password</label>
+                        <input id="cand-confirm-password" name="confirmPassword" type="password" required minLength={8} autoComplete="new-password" value={form.confirmPassword} onChange={handleChange} className="w-full px-4 py-2.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors" />
+                      </div>
+                    </>
+                  )}
 
                   {/* Phone (signup only) */}
                   {activeTab === 'signup' && (
@@ -432,67 +577,15 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
                         Verifying & Submitting…
                       </span>
                     ) : activeTab === 'login' ? (
-                      'Send Sign-in Link'
+                      loginMethod === 'password' ? 'Sign In with Password' : 'Send Sign-in Link'
                     ) : (
-                      'Create Account & Send Sign-in Link'
+                      'Create Account & Verify Email'
                     )}
                   </Button>
                 </form>
 
-                {/* Divider */}
-                <div className="relative my-6">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-200" />
-                  </div>
-                  <div className="relative flex justify-center text-xs">
-                    <span className="bg-white px-3 text-slate-400 font-medium">
-                      or continue with
-                    </span>
-                  </div>
-                </div>
-
-                {/* Social Login Options */}
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleSocialLogin('Google')}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24">
-                      <path
-                        fill="#4285F4"
-                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
-                      />
-                      <path
-                        fill="#34A853"
-                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                      />
-                      <path
-                        fill="#FBBC05"
-                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                      />
-                      <path
-                        fill="#EA4335"
-                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                      />
-                    </svg>
-                    Google
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSocialLogin('LinkedIn')}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer"
-                  >
-                    <svg className="w-4 h-4 text-[#0A66C2]" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
-                    </svg>
-                    LinkedIn
-                  </button>
-                </div>
-
                 <div className="mt-6 rounded-xl border border-emerald-200/80 bg-emerald-50/80 p-3 text-[11px] leading-snug text-emerald-700">
-                  Sign-in links go to the email address you enter. Use an inbox you can open to finish signing in.
+                  Sign in with your password or request a secure link by email. New accounts must verify their email before accessing the portal.
                 </div>
               </>
             )}

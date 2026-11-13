@@ -113,12 +113,18 @@ Open `http://localhost:3000` in your browser.
 | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | *(Firebase web app value)* | Firebase Authentication client configuration |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | *(Firebase web app value)* | Firebase Authentication client configuration |
 | `DEMO_MODE`               | `true`                   | Enable demo mode with seeded data & mock AI      |
+| `DEMO_AUTH_ENABLED` | `false` | Allow configured demo-account password sign-in; keep disabled outside local demos |
 | `FIREBASE_CREDENTIALS_PATH` | *(empty)*              | Path to Firebase service account JSON            |
+| `FIREBASE_PROJECT_ID` | *(empty)*              | Firebase project ID used by the backend Admin SDK |
 | `FIREBASE_STORAGE_BUCKET`  | *(empty)*               | Firebase Storage bucket name                     |
 | `GEMMA_API_KEY`            | *(empty)*                | API key for Gemma 4 AI service                   |
 | `GEMMA_API_BASE_URL`       | *(empty)*                | Base URL for Gemma 4 API endpoint                |
 | `GEMMA_MODEL`              | `gemma-4`                | Gemma model identifier                           |
 Email sign-in links are sent by Firebase Authentication. Configure the Firebase web app in `frontend/.env.local`, enable Email/Password and Email link sign-in in Firebase Authentication, and add the app domain to Authorized domains. During local development, add `localhost` as an authorized domain. Firebase's Email Link sign-in requires Email/Password and Email Link providers enabled in the Firebase console.
+
+The backend also needs Firebase Admin credentials to verify clicked sign-in links. Copy `backend/.env.example` to `backend/.env`, set `FIREBASE_PROJECT_ID` to the same project as `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, and set `FIREBASE_CREDENTIALS_PATH` to a Firebase service account JSON file. In Firebase Console, create a private key under **Project settings → Service accounts** and store it locally, for example as `backend/firebase-credentials.json` (this filename is ignored by git). With the documented `cd backend` startup command, set `FIREBASE_CREDENTIALS_PATH=./firebase-credentials.json`. Never commit or share the service account JSON. SQL setup is not needed.
+
+For local walkthroughs, the backend supports a password bypass for configured candidate and HR demo accounts. Set `DEMO_AUTH_ENABLED=true` and supply their credentials in `backend/.env`; it only authenticates these accounts while `DEMO_MODE=true`. The local credentials are stored in the ignored `backend/.env`. Keep this feature disabled in production.
 
 ---
 

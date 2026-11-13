@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { RoleSessionGuard, signOutRoleSession } from '@/components/auth/RoleSessionGuard';
 import {
   LayoutDashboard,
   Users,
@@ -25,6 +26,7 @@ export default function DashboardLayout({ children }) {
   ];
 
   return (
+    <RoleSessionGuard role="hr">
     <div className="min-h-screen flex bg-slate-50 text-slate-900">
       {/* Sidebar */}
       <aside className="w-64 border-r border-slate-200 bg-white flex flex-col shrink-0 sticky top-0 h-screen z-30">
@@ -107,6 +109,9 @@ export default function DashboardLayout({ children }) {
                 <span className="block text-xs font-semibold text-slate-900">Lead Recruiter</span>
               </div>
             </div>
+            <button type="button" onClick={() => signOutRoleSession('hr')} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900">
+              Sign out
+            </button>
           </div>
         </header>
 
@@ -114,5 +119,6 @@ export default function DashboardLayout({ children }) {
         <main className="flex-1 p-6 lg:p-8 max-w-7xl w-full mx-auto">{children}</main>
       </div>
     </div>
+    </RoleSessionGuard>
   );
 }
