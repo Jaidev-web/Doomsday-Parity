@@ -241,10 +241,27 @@ pnpm run dev
 ### D. Tailwind CSS v4 & Next.js 16 Turbopack Fix
 - Compiled `@tailwindcss/cli` output into `frontend/app/tailwind.css` and linked it directly in `frontend/app/layout.js`, ensuring all utility classes, colors, gradients, and responsive layouts render properly without Turbopack subprocess conflicts.
 
-### D. Firebase Integration & Persistence
+### E. Firebase Integration & Persistence
 - **Implemented Firestore Backend**: Fully integrated `firebase-admin` into the backend. 
 - **Dynamic Database Switching**: Introduced `DatabaseManager` in `backend/app/db/manager.py`. When `DEMO_MODE=False` is set in `.env`, the system automatically routes all CRUD operations to live Firestore collections instead of in-memory dictionaries.
 - **Seeding Support**: The `seed_demo_data()` function now supports pushing demo candidates directly to Firebase on the first run of a new environment.
+
+### F. Candidates Directory Revamp & Sidebar Streamlining
+- **Sidebar Streamlining**: Removed the standalone "Credentials" (`/dashboard/credentials`) and "Identity" (`/dashboard/identity`) items from the HR sidebar navigation in `frontend/app/dashboard/layout.jsx`. The HR sidebar now cleanly presents: Overview, Candidates, Interviews, Reports, and Settings.
+- **Interactive Candidate Cards with Hover Scale**:
+  - Revamped `frontend/components/candidate/CandidateCard.jsx` so each candidate card is entirely clickable with keyboard accessibility (`Enter`/`Space`).
+  - Added subtle hover scaling and elevated shadows (`transform transition-all duration-200 hover:scale-[1.02] hover:shadow-xl hover:border-indigo-300 cursor-pointer`).
+  - Clicking the card directly opens the complete candidate dossier (`/dashboard/candidates/[id]`) with the circular Trust Score gauge, full findings breakdowns, and Gemma 4 AI chat assistant.
+- **Dedicated Credentials & Identity Detail Modals**:
+  - Integrated dedicated "Credentials" and "Identity" buttons on each candidate card with check counters and real-time status badges.
+  - Clicking either button utilizes `e.stopPropagation()` to prevent card navigation and opens an in-depth modal (`frontend/components/ui/Modal.jsx`) detailing all forensic checks:
+    - Overall vector status banner.
+    - Check title, check type (`employment_dates`, `cert_metadata`, `github_analysis`, `name_consistency`, `document_info`, etc.), status, and severity tag (`critical`, `high`, `medium`, `low`).
+    - Forensic explanations and bulleted cited evidence lists.
+    - Action button linking to the full candidate profile and trust score.
+- **Candidates Directory Defaults**:
+  - Updated `frontend/app/dashboard/candidates/page.jsx` to default `viewMode` to `'grid'` (Cards) so recruiters immediately see the interactive cards with hover scaling.
+  - Table view also updated with clickable rows and interactive Credentials/Identity badges triggering the same detail modals.
 
 ---
 
