@@ -1,23 +1,14 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft,
-  Video,
-  VideoOff,
-  AlertTriangle,
-  Play,
-  Square,
-  RefreshCw,
-  Eye,
-  EyeOff,
-  Clipboard,
-  ShieldAlert,
-  CheckCircle2,
-  Clock,
-  Sparkles,
-  Camera,
+  ArrowLeft, Video, VideoOff, Mic, MicOff, Shield, AlertTriangle,
+  CheckCircle2, Clock, Play, Square, ChevronRight, Clipboard, Eye,
+  MessageSquare, FileText, Camera, Sparkles, Loader2, XCircle,
+  Monitor, MonitorOff, ExternalLink, Flag, Send, RefreshCw, ThumbsUp,
+  UserCheck, ShieldAlert,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -25,494 +16,766 @@ import { Badge } from '@/components/ui/Badge';
 import { api } from '@/lib/api';
 import { DEMO_CANDIDATES } from '@/lib/constants';
 
-export default function InterviewMonitorPage() {
+// Interview-specific components
+import InterviewHeader from '@/components/interview/InterviewHeader';
+import AIQuestionCard from '@/components/interview/AIQuestionCard';
+import CameraMonitorPanel from '@/components/interview/CameraMonitorPanel';
+import HRCameraTile from '@/components/interview/HRCameraTile';
+import IntegrityMonitorPanel from '@/components/interview/IntegrityMonitorPanel';
+import InterviewHistory from '@/components/interview/InterviewHistory';
+import DocumentConsistencyPanel from '@/components/interview/DocumentConsistencyPanel';
+import AIQuestionAssistant from '@/components/interview/AIQuestionAssistant';
+import ResumeQuestionGenerator from '@/components/interview/ResumeQuestionGenerator';
+import CandidateAnswerReview from '@/components/interview/CandidateAnswerReview';
+import EndInterviewModal from '@/components/interview/EndInterviewModal';
+import InterviewCompletion from '@/components/interview/InterviewCompletion';
+
+// Interview API & Mock Data
+import { createInterviewSession, recordIntegrityEvent, analyzeResponseForAI } from '@/lib/interview/api';
+import { MOCK_RESUME_DATA, RESUME_QUESTION_TEMPLATES, GENERIC_QUESTIONS } from '@/lib/interview/mockData';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sample Candidate Spoken Responses for Live Demo:
+// - Sarah Chen: High Trust (18% AI score - Natural human speech)
+// - Marcus Rivera: High Risk (88% AI score - Flagged as AI/LLM scripted)
+// - Priya Sharma: Moderate Trust (42% AI score - Review required)
+// ─────────────────────────────────────────────────────────────────────────────
+const CANDIDATE_SAMPLE_ANSWERS = {
+  'cand-sarah-001': [
+    {
+      text: "React reconciliation relies on virtual DOM diffing with an O(n) heuristic. By comparing tree levels and using stable keys, React avoids tearing down entire component subtrees. In my last project at TechFlow, optimizing component memoization and key assignments decreased our page re-render latency by approximately 40%.",
+      aiScore: 18,
+      signals: {
+        vocabulary: 'Natural colloquial with specific project context',
+        fillers: 'Natural conversational cadence & pauses',
+        uniformity: 'Varied human sentence structure',
+      },
+    },
+    {
+      text: "When choosing between Redux and Zustand, I look at team scale and domain complexity. For a large enterprise platform with time-travel debugging requirements, Redux Toolkit is solid. But for most micro-frontends, Zustand gives us slice-based subscriptions without boilerplate overhead.",
+      aiScore: 22,
+      signals: {
+        vocabulary: 'Conversational engineering phrasing',
+        fillers: 'Natural hesitation words present',
+        uniformity: 'Organic variability',
+      },
+    },
+  ],
+  'cand-marcus-002': [
+    {
+      text: "In order to optimize distributed system architecture, one must consider horizontal scalability, asynchronous event loops, and non-blocking I/O. Redis serves as an in-memory data store providing sub-millisecond latency for cache invalidation strategies while PostgreSQL maintains ACID compliance across relational schemas.",
+      aiScore: 88,
+      signals: {
+        vocabulary: 'Artificially elevated textbook prose',
+        fillers: '0 fillers detected (Unnatural fluency)',
+        uniformity: 'Uniform syntactic length matching GPT-4 output',
+      },
+    },
+    {
+      text: "Kubernetes orchestration requires ingress controllers configured with mutual TLS authentication. Container pods are scheduled across cluster worker nodes using affinity rules and resource limits to ensure zero-downtime rolling deployments.",
+      aiScore: 92,
+      signals: {
+        vocabulary: 'Rigid bulleted monologue structure',
+        fillers: 'Completely devoid of conversational pauses',
+        uniformity: 'Identical clause lengths',
+      },
+    },
+  ],
+  'cand-priya-003': [
+    {
+      text: "For asynchronous task queues, I configure Celery with Redis or RabbitMQ as the message broker. We set worker concurrency based on CPU cores for compute-heavy tasks, and use gevent or eventlet if we're mostly waiting on network I/O calls.",
+      aiScore: 42,
+      signals: {
+        vocabulary: 'Technical terminology with some memorized phrasing',
+        fillers: 'Occasional pauses detected',
+        uniformity: 'Moderately structured',
+      },
+    },
+  ],
+};
+
+const DEFAULT_QUESTIONS = [
+  { text: "Tell me about yourself — specifically your engineering background and what brought you to apply for this role.", category: 'opening' },
+  { text: "Looking at your resume, what project are you most proud of and why?", category: 'resume' },
+  { text: "Walk me through how React reconciliation works. How does the virtual DOM diffing algorithm decide what to re-render?", category: 'technical' },
+  { text: "How have you handled state management at scale? Compare Redux, Zustand, and React Context.", category: 'technical' },
+  { text: "Tell me about a time you had to resolve a high-severity production outage under time pressure.", category: 'behavioural' },
+];
+
+const COPILOT_TABS = [
+  { id: 'resume',     label: 'Resume Scanner', Icon: FileText },
+  { id: 'questions',  label: 'AI Questions',   Icon: Sparkles },
+  { id: 'documents',  label: 'Discrepancies',  Icon: Clipboard },
+  { id: 'integrity',  label: 'Integrity Logs', Icon: Shield },
+];
+
+export default function HRInterviewMonitorPage() {
   const params = useParams();
   const router = useRouter();
-  const id = params?.id || 'cand-sarah-001';
+  const candidateId = params?.id || 'cand-sarah-001';
 
+  // ── Candidate info ────────────────────────────────────────────────────────
   const [candidate, setCandidate] = useState(null);
-  const [isMonitoring, setIsMonitoring] = useState(false);
-  const [consentGranted, setConsentGranted] = useState(false);
-  const [cameraActive, setCameraActive] = useState(false);
-  const [tabSwitches, setTabSwitches] = useState(0);
-  const [copyPastes, setCopyPastes] = useState(0);
-  const [focusLosses, setFocusLosses] = useState(0);
-  const [events, setEvents] = useState([]);
-  const [duration, setDuration] = useState(0);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [report, setReport] = useState(null);
 
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
+  // ── Monitor status ────────────────────────────────────────────────────────
+  const [isMonitorLaunched, setIsMonitorLaunched] = useState(false);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const [sessionDuration, setSessionDuration] = useState(0);
+  const [sessionId, setSessionId] = useState(`session-${candidateId}-${Date.now().toString().slice(-6)}`);
+  const [completed, setCompleted] = useState(false);
+  const [showEndModal, setShowEndModal] = useState(false);
+
+  // ── Camera & Gaze Proctoring Stream ───────────────────────────────────────
+  const [mediaStream, setMediaStream] = useState(null);
+  const [cameraError, setCameraError] = useState(null);
+
+  // ── Q&A & Candidate Response Review ───────────────────────────────────────
+  const [currentQuestion, setCurrentQuestion] = useState(DEFAULT_QUESTIONS[0].text);
+  const [currentCategory, setCurrentCategory] = useState(DEFAULT_QUESTIONS[0].category);
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [history, setHistory] = useState([]);
+  const [isCandidateSpeaking, setIsCandidateSpeaking] = useState(false);
+  const [latestAnswer, setLatestAnswer] = useState(null);
+  const [customQuestionInput, setCustomQuestionInput] = useState('');
+
+  // ── Integrity monitoring ──────────────────────────────────────────────────
+  const [tabSwitches, setTabSwitches] = useState(0);
+  const [focusLosses, setFocusLosses] = useState(0);
+  const [pasteEvents, setPasteEvents] = useState(0);
+  const [gazeAwayCount, setGazeAwayCount] = useState(0);
+  const [integrityEvents, setIntegrityEvents] = useState([]);
+  const [screenSharing, setScreenSharing] = useState(false);
+  const [copilotTab, setCopilotTab] = useState('resume');
+
   const timerRef = useRef(null);
 
+  // ── Load candidate ────────────────────────────────────────────────────────
   useEffect(() => {
-    async function fetchCandidate() {
-      try {
-        const c = await api.candidates.get(id);
-        setCandidate(c || DEMO_CANDIDATES[0]);
-      } catch (e) {
-        setCandidate(DEMO_CANDIDATES[0]);
-      }
-    }
-    fetchCandidate();
-  }, [id]);
+    const found = DEMO_CANDIDATES.find((c) => c.id === candidateId) || DEMO_CANDIDATES[0];
+    setCandidate(found);
 
-  // Session duration timer
-  useEffect(() => {
-    if (isMonitoring) {
-      timerRef.current = setInterval(() => {
-        setDuration((prev) => prev + 1);
-      }, 1000);
-    } else {
-      clearInterval(timerRef.current);
-    }
-    return () => clearInterval(timerRef.current);
-  }, [isMonitoring]);
-
-  // Client-side Browser Tab Monitoring
-  useEffect(() => {
-    if (!isMonitoring) return;
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        const newEvent = {
-          id: 'evt-' + Date.now(),
-          type: 'tab_switch',
-          label: 'Tab switched away (Hidden)',
-          timestamp: new Date().toLocaleTimeString(),
-          severity: 'high',
-        };
-        setTabSwitches((prev) => prev + 1);
-        setEvents((prev) => [newEvent, ...prev]);
-      } else {
-        const returnEvent = {
-          id: 'evt-' + Date.now(),
-          type: 'tab_return',
-          label: 'Returned to assessment tab',
-          timestamp: new Date().toLocaleTimeString(),
-          severity: 'low',
-        };
-        setEvents((prev) => [returnEvent, ...prev]);
-      }
-    };
-
-    const handleBlur = () => {
-      const blurEvent = {
-        id: 'evt-' + Date.now(),
-        type: 'window_blur',
-        label: 'Window lost focus (Alt+Tab / secondary app)',
-        timestamp: new Date().toLocaleTimeString(),
-        severity: 'medium',
-      };
-      setFocusLosses((prev) => prev + 1);
-      setEvents((prev) => [blurEvent, ...prev]);
-    };
-
-    const handlePaste = (e) => {
-      const pasteEvent = {
-        id: 'evt-' + Date.now(),
-        type: 'copy_paste',
-        label: 'Clipboard paste action detected',
-        timestamp: new Date().toLocaleTimeString(),
-        severity: 'medium',
-      };
-      setCopyPastes((prev) => prev + 1);
-      setEvents((prev) => [pasteEvent, ...prev]);
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('blur', handleBlur);
-    window.addEventListener('paste', handlePaste);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('blur', handleBlur);
-      window.removeEventListener('paste', handlePaste);
-    };
-  }, [isMonitoring]);
-
-  const startCamera = async () => {
-    try {
-      if (navigator?.mediaDevices?.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-        setCameraActive(true);
-      }
-    } catch (err) {
-      console.warn('Camera access not granted or unavailable, continuing in headless monitor mode:', err);
-      setCameraActive(false);
-    }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setCameraActive(false);
-  };
-
-  const handleStartSession = async () => {
-    setConsentGranted(true);
-    setIsMonitoring(true);
-    setEvents([
-      {
-        id: 'start',
-        type: 'session_start',
-        label: 'Interview session monitoring initialized',
-        timestamp: new Date().toLocaleTimeString(),
-        severity: 'low',
-      },
-    ]);
-    await startCamera();
-  };
-
-  const handleStopSession = () => {
-    setIsMonitoring(false);
-    stopCamera();
-  };
-
-  const handleSimulateEvent = (type) => {
-    const time = new Date().toLocaleTimeString();
-    if (type === 'tab_switch') {
-      setTabSwitches((prev) => prev + 1);
-      setEvents((prev) => [
-        {
-          id: 'sim-' + Date.now(),
-          type: 'tab_switch',
-          label: '[Demo Trigger] Tab switched away for 35s',
-          timestamp: time,
-          severity: 'high',
-        },
-        ...prev,
-      ]);
-    } else if (type === 'paste') {
-      setCopyPastes((prev) => prev + 1);
-      setEvents((prev) => [
-        {
-          id: 'sim-' + Date.now(),
-          type: 'copy_paste',
-          label: '[Demo Trigger] Large paste (320 characters)',
-          timestamp: time,
-          severity: 'medium',
-        },
-        ...prev,
-      ]);
-    }
-  };
-
-  const handleCompleteAndAudit = () => {
-    setAnalyzing(true);
-    setIsMonitoring(false);
-    stopCamera();
-
-    setTimeout(() => {
-      // Calculate integrity score
-      let score = 100;
-      score -= tabSwitches * 5;
-      score -= copyPastes * 8;
-      score -= focusLosses * 3;
-      score = Math.max(0, score);
-
-      setReport({
-        score,
-        status: score >= 75 ? 'Clean' : score >= 50 ? 'Requires Review' : 'Critical Integrity Alert',
-        tabSwitches,
-        copyPastes,
-        focusLosses,
-        summary:
-          score >= 75
-            ? 'Candidate maintained consistent browser focus with minimal external app interaction.'
-            : `Suspicious behavior detected: ${tabSwitches} tab switches and ${copyPastes} clipboard events observed during live assessment.`,
+    const sample = (CANDIDATE_SAMPLE_ANSWERS[candidateId] || CANDIDATE_SAMPLE_ANSWERS['cand-sarah-001'])[0];
+    if (sample) {
+      setLatestAnswer({
+        text: sample.text,
+        aiScore: sample.aiScore,
+        signals: sample.signals,
+        timestamp: 'Just now',
       });
-      setAnalyzing(false);
-    }, 1200);
+    }
+  }, [candidateId]);
+
+  // ── Timer loop ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isMonitorLaunched) return;
+    timerRef.current = setInterval(() => setSessionDuration((d) => d + 1), 1000);
+    return () => clearInterval(timerRef.current);
+  }, [isMonitorLaunched]);
+
+  // ── Handle Integrity Events ───────────────────────────────────────────────
+  const addIntegrityEvent = useCallback((event) => {
+    setIntegrityEvents((prev) => [event, ...prev]);
+    if (event.eventType === 'gaze_away') {
+      setGazeAwayCount((c) => c + 1);
+    }
+    recordIntegrityEvent(sessionId, event).catch(() => {});
+  }, [sessionId]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Launch Interview Monitor
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleLaunchMonitor = async () => {
+    setIsLaunching(true);
+    setCameraError(null);
+
+    try {
+      let stream = null;
+      if (navigator?.mediaDevices?.getUserMedia) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+            audio: false,
+          });
+          setMediaStream(stream);
+        } catch (mediaErr) {
+          console.warn('Webcam preview note:', mediaErr);
+          setCameraError('Running proctoring in simulation/telemetry-only mode.');
+        }
+      }
+
+      const session = await createInterviewSession(candidateId);
+      if (session?.session_id) setSessionId(session.session_id);
+
+      addIntegrityEvent({
+        eventType: 'monitor_launched',
+        severity: 'low',
+        timestamp: new Date().toISOString(),
+        metadata: { role: 'hr_interviewer', candidate_id: candidateId },
+      });
+
+      setIsMonitorLaunched(true);
+    } catch (err) {
+      console.error('Launch monitor error:', err);
+      setIsMonitorLaunched(true);
+    } finally {
+      setIsLaunching(false);
+    }
   };
 
-  const formatTimer = (secs) => {
-    const mins = Math.floor(secs / 60);
-    const remainder = secs % 60;
-    return `${mins.toString().padStart(2, '0')}:${remainder.toString().padStart(2, '0')}`;
+  // ─────────────────────────────────────────────────────────────────────────
+  // Dispatch Question to Candidate
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleDispatchQuestion = (questionText, category = 'custom') => {
+    if (!questionText.trim()) return;
+
+    if (latestAnswer) {
+      setHistory((prev) => [
+        ...prev,
+        {
+          question: currentQuestion,
+          category: currentCategory,
+          answer: latestAnswer.text,
+          aiScore: latestAnswer.aiScore,
+          aiFlag: latestAnswer.aiScore > 60,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    }
+
+    setCurrentQuestion(questionText);
+    setCurrentCategory(category);
+    setQuestionIndex((i) => i + 1);
+    setLatestAnswer(null);
+    setCustomQuestionInput('');
+
+    // Simulate candidate microphone receiving & answering
+    setIsCandidateSpeaking(true);
+    setTimeout(() => {
+      setIsCandidateSpeaking(false);
+      const pool = CANDIDATE_SAMPLE_ANSWERS[candidateId] || CANDIDATE_SAMPLE_ANSWERS['cand-sarah-001'];
+      const nextSample = pool[questionIndex % pool.length] || pool[0];
+      setLatestAnswer({
+        text: nextSample.text,
+        aiScore: nextSample.aiScore,
+        signals: nextSample.signals,
+        timestamp: 'Just now',
+      });
+
+      if (nextSample.aiScore > 60) {
+        addIntegrityEvent({
+          eventType: 'ai_response_suspected',
+          severity: 'high',
+          timestamp: new Date().toISOString(),
+          metadata: { ai_score: nextSample.aiScore, question: questionText.slice(0, 50) },
+        });
+      }
+    }, 2600);
   };
 
-  const currentCand = candidate || DEMO_CANDIDATES[0];
+  const handleEndSession = () => {
+    if (mediaStream) {
+      mediaStream.getTracks().forEach((t) => t.stop());
+    }
+    setCompleted(true);
+  };
 
-  return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <Link
-            href={`/dashboard/candidates/${currentCand.id}`}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 mb-2"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to {currentCand.name}'s profile
-          </Link>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Live Technical Interview Monitor
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Real-time client-side focus monitoring, window blur tracking, and telemetry feed for {currentCand.name}.
-          </p>
+  const handleResetSession = () => {
+    setCompleted(false);
+    setIsMonitorLaunched(false);
+    setSessionDuration(0);
+    setHistory([]);
+    setIntegrityEvents([]);
+    setTabSwitches(0);
+    setGazeAwayCount(0);
+    setLatestAnswer(null);
+  };
+
+  const formatDuration = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  };
+
+  // Integrity assessment
+  const isCritical = tabSwitches >= 5 || gazeAwayCount >= 5 || history.some((h) => h.aiScore > 75);
+  const isWarning = tabSwitches >= 2 || gazeAwayCount >= 2 || history.some((h) => h.aiScore > 40);
+  const overallRisk = isCritical ? 'critical' : isWarning ? 'warning' : 'clean';
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER: Session Completed Summary
+  // ─────────────────────────────────────────────────────────────────────────
+  if (completed) {
+    return (
+      <InterviewCompletion
+        candidate={candidate}
+        sessionId={sessionId}
+        history={history}
+        integrityStats={{ tabSwitches, focusLosses, pasteEvents, gazeAwayCount }}
+        onReset={handleResetSession}
+      />
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER: Pre-Launch Monitor Screen
+  // ─────────────────────────────────────────────────────────────────────────
+  if (!isMonitorLaunched) {
+    return (
+      <div className="space-y-6 max-w-4xl mx-auto py-2 w-full">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <Link href="/dashboard/candidates" className="hover:text-slate-800">Candidates</Link>
+          <ChevronRight className="w-3 h-3" />
+          <Link href={`/dashboard/candidates/${candidateId}`} className="hover:text-slate-800">{candidate?.name}</Link>
+          <ChevronRight className="w-3 h-3" />
+          <span className="font-semibold text-slate-800">Interview Monitoring Center</span>
         </div>
 
-        {/* Live Status indicator */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200 shadow-xs">
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                isMonitoring ? 'bg-rose-500 animate-ping' : 'bg-slate-300'
-              }`}
-            />
-            <span className="text-xs font-bold font-mono">
-              {isMonitoring ? `RECORDING ${formatTimer(duration)}` : 'IDLE / READY'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Consent Banner (if not yet started) */}
-      {!consentGranted && (
-        <Card className="p-6 bg-indigo-50/70 border-indigo-200">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-indigo-600 rounded-xl text-white shrink-0">
-              <Eye className="w-6 h-6" />
+        {/* Hero Card */}
+        <Card className="p-8 border-slate-200 shadow-xs space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 pb-6 border-b border-slate-100">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-2xl shadow-xs">
+                {candidate?.name?.charAt(0) || 'C'}
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">{candidate?.name}</h1>
+                <p className="text-xs text-slate-500 mt-0.5">{candidate?.position} · Trust Score: <span className="font-bold text-indigo-600">{candidate?.trust_score}/100</span></p>
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge variant={candidate?.overall_status === 'verified' ? 'verified' : candidate?.overall_status === 'critical_review' ? 'critical' : 'warning'}>
+                    {candidate?.overall_status?.replace('_', ' ')}
+                  </Badge>
+                  <span className="text-xs text-slate-400 font-mono">ID: {candidate?.id}</span>
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <h3 className="text-base font-bold text-slate-900">
-                Ethical Proctoring & Candidate Privacy Notice
-              </h3>
-              <p className="text-xs text-slate-600 leading-relaxed max-w-3xl">
-                TrustHire monitors browser tab visibility, focus changes, and optional camera presence with candidate
-                consent. No keystrokes or screen captures are sent to external third parties. All event logs are evaluated
-                using deterministic heuristics to assist human recruiters.
+
+            {/* Launch Action */}
+            <div className="flex flex-col sm:items-end gap-2">
+              <Button
+                size="lg"
+                variant="primary"
+                onClick={handleLaunchMonitor}
+                disabled={isLaunching}
+                icon={Play}
+                className="shadow-sm bg-indigo-600 hover:bg-indigo-700 px-6 py-2.5 font-semibold text-sm"
+              >
+                {isLaunching ? 'Connecting Monitor…' : 'Launch Interview Monitor'}
+              </Button>
+              <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                Live Camera & Eye Gaze Proctoring Ready
+              </span>
+            </div>
+          </div>
+
+          {/* Architecture / Role Division Notice */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/80 space-y-2">
+              <div className="flex items-center gap-2 text-indigo-700 font-semibold text-xs uppercase tracking-wide">
+                <Shield className="w-4 h-4 text-indigo-600" />
+                HR Monitoring Center (This Window)
+              </div>
+              <ul className="text-xs text-slate-600 space-y-1.5 list-disc list-inside">
+                <li>Real-time <strong>Camera & Eye Movement</strong> gaze deviation tracking</li>
+                <li><strong>HR Camera Tile</strong> broadcast preview with mic/video controls</li>
+                <li><strong>Resume-based Question Generator</strong> targeting candidate skills</li>
+                <li>Live Whisper transcription of candidate microphone feed</li>
+                <li>Automated <strong>AI-Generated Answer Detection</strong> (0–100% LLM score)</li>
+              </ul>
+            </div>
+
+            <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-indigo-900 font-semibold text-xs uppercase tracking-wide">
+                  <Video className="w-4 h-4 text-indigo-600" />
+                  Candidate Interview Room
+                </span>
+                <Link
+                  href="/candidate/interview"
+                  target="_blank"
+                  className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline font-semibold"
+                >
+                  Open Candidate Portal <ExternalLink className="w-3 h-3" />
+                </Link>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                The candidate joins at <code className="bg-white px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-700 font-mono text-[11px]">/candidate/interview</code>.
+                They see the HR interviewer's camera tile, read dispatched questions, and record answers via microphone.
               </p>
-              <div className="pt-2">
-                <Button size="md" onClick={handleStartSession} icon={Play}>
-                  Consent & Start Interview Session
-                </Button>
+              <div className="pt-1">
+                <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-mono font-medium">
+                  Direct Endpoint: /candidate/interview
+                </span>
               </div>
             </div>
           </div>
         </Card>
-      )}
+      </div>
+    );
+  }
 
-      {/* Main Monitoring Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Video Feed & Real-time Telemetry */}
-        <div className="lg:col-span-7 space-y-6">
-          {/* Webcam / Feed Area */}
-          <Card className="overflow-hidden bg-slate-950 text-white relative min-h-[340px] flex items-center justify-center border-slate-800">
-            {cameraActive ? (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover max-h-[420px]"
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER: Active HR Interview Monitor Screen (Rock-Solid 2-Column Layout)
+  // ─────────────────────────────────────────────────────────────────────────
+  return (
+    <div className="space-y-5 w-full max-w-7xl mx-auto pb-10">
+      {/* Top Session Status Bar Card - Spans 100% of width cleanly */}
+      <div className="bg-white border border-slate-200 rounded-xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-xs">
+        {/* Candidate Info */}
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/dashboard/candidates/${candidateId}`}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-900">{candidate?.name}</h2>
+              <Badge variant={candidate?.overall_status === 'verified' ? 'verified' : 'critical'}>
+                {candidate?.overall_status?.replace('_', ' ')}
+              </Badge>
+            </div>
+            <p className="text-[11px] text-slate-400">{candidate?.position} · Session #{sessionId.slice(-6)}</p>
+          </div>
+        </div>
+
+        {/* Live Status Indicators & Controls */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Active Timer */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
+            <Clock className="w-3.5 h-3.5 text-slate-500" />
+            <span className="font-mono text-xs font-bold text-slate-700">{formatDuration(sessionDuration)}</span>
+          </div>
+
+          {/* Proctoring Badge */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            Live Monitor Active
+          </div>
+
+          {/* Overall Integrity Score */}
+          <div className={`px-2.5 py-1.5 rounded-full text-xs font-semibold border ${
+            overallRisk === 'critical'
+              ? 'bg-rose-50 border-rose-200 text-rose-700'
+              : overallRisk === 'warning'
+              ? 'bg-amber-50 border-amber-200 text-amber-700'
+              : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+          }`}>
+            Integrity: {overallRisk.toUpperCase()}
+          </div>
+
+          {/* Candidate Room Link */}
+          <Link
+            href="/candidate/interview"
+            target="_blank"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            Candidate Room <ExternalLink className="w-3 h-3 text-slate-400" />
+          </Link>
+
+          {/* End Session Button */}
+          <Button variant="danger" size="sm" onClick={() => setShowEndModal(true)}>
+            End Session
+          </Button>
+        </div>
+      </div>
+
+      {/* Main 2-Column Responsive Layout (5 cols left, 7 cols right on desktop) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full">
+        {/* ── LEFT COLUMN: Dual Videos, Proctoring & HR Copilot Tools (5 cols) ── */}
+        <div className="lg:col-span-5 space-y-5">
+          {/* Card 1: Dual Live Video Monitoring Feeds */}
+          <Card className="p-4 space-y-4 shadow-xs border-slate-200">
+            {/* Tile A: Candidate Live Feed with Eye Movement Tracking */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Eye className="w-4 h-4 text-indigo-600" />
+                  Candidate Eye Gaze Monitor
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">WebRTC Feed</span>
+              </div>
+
+              <CameraMonitorPanel
+                stream={mediaStream}
+                active={isMonitorLaunched}
+                onIntegrityEvent={addIntegrityEvent}
+                candidateName={candidate?.name}
               />
-            ) : (
-              <div className="flex flex-col items-center justify-center p-8 text-center">
-                <div className="p-4 bg-slate-900 rounded-2xl text-slate-500 mb-3 border border-slate-800">
-                  <Camera className="w-8 h-8" />
+            </div>
+
+            {/* Tile B: HR Interviewer Camera (Self-Preview & Broadcast) */}
+            <div className="pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Video className="w-4 h-4 text-indigo-600" />
+                  HR Interviewer Camera
+                </span>
+                <span className="text-[10px] text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                  Broadcasting
+                </span>
+              </div>
+
+              <HRCameraTile
+                mode="hr"
+                interviewerName="Lead Technical Recruiter"
+                interviewerRole="TrustHire Evaluation Panel"
+              />
+            </div>
+
+            {/* Proctoring Telemetry Summary & Test Triggers */}
+            <div className="pt-2 border-t border-slate-100 space-y-2.5">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/70">
+                  <span className="text-slate-400 text-[10px] block uppercase font-medium">Eye Look-Aways</span>
+                  <span className={`text-base font-bold ${gazeAwayCount >= 3 ? 'text-rose-600' : 'text-slate-700'}`}>
+                    {gazeAwayCount} <span className="text-[11px] font-normal text-slate-400">events</span>
+                  </span>
                 </div>
-                <p className="text-sm font-semibold text-slate-300">
-                  {isMonitoring ? 'Camera stream active (headless simulation)' : 'Camera stream paused'}
-                </p>
-                <p className="text-xs text-slate-500 max-w-xs mt-1">
-                  Browser tab visibility and focus tracking run independently of video feed.
-                </p>
-              </div>
-            )}
 
-            {/* Overlaid Live Badges */}
-            {isMonitoring && (
-              <div className="absolute top-4 left-4 flex items-center gap-2">
-                <span className="px-2.5 py-1 rounded-md bg-rose-600/90 text-white text-[11px] font-bold font-mono tracking-wider flex items-center gap-1.5 shadow-md">
-                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                  LIVE ASSESSMENT
-                </span>
-                <span className="px-2.5 py-1 rounded-md bg-black/60 backdrop-blur-xs text-slate-300 text-[11px] font-mono border border-white/10">
-                  Candidate: {currentCand.name}
-                </span>
-              </div>
-            )}
-          </Card>
-
-          {/* Session Controls & Demo Triggers */}
-          <Card className="p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                {isMonitoring ? (
-                  <Button variant="danger" size="sm" onClick={handleStopSession} icon={Square}>
-                    Pause Monitor
-                  </Button>
-                ) : (
-                  <Button variant="primary" size="sm" onClick={handleStartSession} icon={Play}>
-                    {consentGranted ? 'Resume Monitoring' : 'Start Monitor'}
-                  </Button>
-                )}
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCompleteAndAudit}
-                  disabled={analyzing}
-                  icon={Sparkles}
-                >
-                  {analyzing ? 'Synthesizing...' : 'Complete & Generate Report'}
-                </Button>
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/70">
+                  <span className="text-slate-400 text-[10px] block uppercase font-medium">Tab Switches</span>
+                  <span className={`text-base font-bold ${tabSwitches >= 3 ? 'text-rose-600' : 'text-slate-700'}`}>
+                    {tabSwitches} <span className="text-[11px] font-normal text-slate-400">switches</span>
+                  </span>
+                </div>
               </div>
 
-              {/* Demo Triggers for judges */}
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Judge Demo:
-                </span>
+              {/* Demo Test Simulation Buttons */}
+              <div className="flex flex-wrap gap-1.5 pt-1">
                 <button
-                  onClick={() => handleSimulateEvent('tab_switch')}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition-colors"
+                  onClick={() => {
+                    setTabSwitches((c) => c + 1);
+                    addIntegrityEvent({
+                      eventType: 'tab_switch',
+                      severity: tabSwitches + 1 >= 4 ? 'critical' : 'high',
+                      timestamp: new Date().toISOString(),
+                      metadata: { count: tabSwitches + 1 },
+                    });
+                  }}
+                  className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-[11px] font-medium transition-colors"
                 >
-                  + Tab Switch
+                  + Test Tab Switch
                 </button>
+
                 <button
-                  onClick={() => handleSimulateEvent('paste')}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition-colors"
+                  onClick={() => {
+                    setGazeAwayCount((c) => c + 1);
+                    addIntegrityEvent({
+                      eventType: 'gaze_away',
+                      severity: 'medium',
+                      timestamp: new Date().toISOString(),
+                      metadata: { gaze_away_count: gazeAwayCount + 1 },
+                    });
+                  }}
+                  className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-[11px] font-medium transition-colors"
                 >
-                  + Paste
+                  + Test Look-Away
                 </button>
               </div>
             </div>
           </Card>
 
-          {/* Telemetry Summary Counters */}
-          <div className="grid grid-cols-3 gap-4">
-            <Card className="p-4 text-center">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                Tab Switches
-              </span>
-              <span
-                className={`text-2xl font-extrabold mt-1 block ${
-                  tabSwitches >= 5 ? 'text-rose-600' : tabSwitches >= 3 ? 'text-amber-600' : 'text-slate-900'
-                }`}
-              >
-                {tabSwitches}
-              </span>
-              <span className="text-[10px] text-slate-400">Threshold: &lt;3 clean</span>
-            </Card>
-
-            <Card className="p-4 text-center">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                Clipboard Pastes
-              </span>
-              <span
-                className={`text-2xl font-extrabold mt-1 block ${
-                  copyPastes >= 3 ? 'text-rose-600' : copyPastes >= 1 ? 'text-amber-600' : 'text-slate-900'
-                }`}
-              >
-                {copyPastes}
-              </span>
-              <span className="text-[10px] text-slate-400">Post-switch correlated</span>
-            </Card>
-
-            <Card className="p-4 text-center">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                Focus Losses
-              </span>
-              <span className="text-2xl font-extrabold text-slate-900 mt-1 block">
-                {focusLosses}
-              </span>
-              <span className="text-[10px] text-slate-400">Window blur events</span>
-            </Card>
-          </div>
-        </div>
-
-        {/* Right Column: Real-time Event Log & Audit Report */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Generated Report Card if completed */}
-          {report && (
-            <Card className="p-5 border-indigo-200 bg-indigo-50/40">
-              <div className="flex items-center justify-between pb-3 border-b border-indigo-100">
-                <div className="flex items-center gap-2">
-                  <ShieldAlert className="w-5 h-5 text-indigo-600" />
-                  <h3 className="text-sm font-bold text-slate-900">Integrity Audit Result</h3>
-                </div>
-                <Badge
-                  variant={report.score >= 75 ? 'verified' : report.score >= 50 ? 'warning' : 'critical'}
+          {/* Card 2: HR Copilot & Question Generator Tools */}
+          <Card className="shadow-xs border-slate-200 overflow-hidden">
+            {/* Copilot Navigation Tabs */}
+            <div className="flex border-b border-slate-200 bg-slate-50/70 overflow-x-auto">
+              {COPILOT_TABS.map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setCopilotTab(id)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-3 text-xs font-medium whitespace-nowrap border-b-2 transition-all ${
+                    copilotTab === id
+                      ? 'border-indigo-600 text-indigo-700 bg-white font-semibold'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
                 >
-                  {report.status}
-                </Badge>
-              </div>
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{label}</span>
+                  {id === 'integrity' && integrityEvents.length > 0 && (
+                    <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 font-bold">
+                      {integrityEvents.length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
 
-              <div className="mt-4 flex items-center justify-between">
-                <div>
-                  <span className="text-xs text-slate-500 block">Session Integrity Score</span>
-                  <span className="text-3xl font-extrabold text-slate-900">{report.score}/100</span>
+            {/* Tab Content Panel */}
+            <div className="p-4 space-y-4">
+              {/* 1. Resume Scanner & Question Generator */}
+              {copilotTab === 'resume' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                      Resume Skills & Projects Scanner
+                    </span>
+                    <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 font-medium">
+                      Profile Scanned
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-snug">
+                    Click <strong>"Ask"</strong> next to any skill or project below to generate an AI technical question and dispatch it live to the candidate portal.
+                  </p>
+                  <ResumeQuestionGenerator
+                    sessionId={sessionId}
+                    candidateId={candidateId}
+                    onAskQuestion={(q) => handleDispatchQuestion(q, 'resume-probe')}
+                  />
                 </div>
-                <Link href={`/dashboard/candidates/${currentCand.id}`}>
-                  <Button size="sm">Save to Profile</Button>
-                </Link>
-              </div>
-
-              <p className="text-xs text-slate-600 mt-3 p-3 bg-white rounded-lg border border-indigo-100 leading-relaxed">
-                {report.summary}
-              </p>
-            </Card>
-          )}
-
-          {/* Scrolling Event Log */}
-          <Card className="flex flex-col h-[520px]">
-            <CardHeader className="py-4">
-              <div className="flex items-center justify-between w-full">
-                <CardTitle className="text-sm">Real-Time Event Stream</CardTitle>
-                <span className="text-[11px] font-mono text-slate-400">
-                  {events.length} events logged
-                </span>
-              </div>
-            </CardHeader>
-            <CardContent className="flex-1 overflow-y-auto p-4 space-y-2.5 font-mono text-xs">
-              {events.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                  <Clock className="w-6 h-6 mb-2" />
-                  <p className="text-xs">Waiting for interview events...</p>
-                  <p className="text-[11px] text-slate-400">Switch tabs or use demo triggers to test</p>
-                </div>
-              ) : (
-                events.map((evt) => {
-                  let badgeColor = 'bg-slate-100 text-slate-700';
-                  if (evt.severity === 'high') badgeColor = 'bg-rose-100 text-rose-800 border-rose-200';
-                  if (evt.severity === 'medium') badgeColor = 'bg-amber-100 text-amber-800 border-amber-200';
-                  if (evt.severity === 'low') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-200';
-
-                  return (
-                    <div
-                      key={evt.id}
-                      className="p-2.5 rounded-lg border border-slate-100 bg-slate-50/80 flex items-start justify-between gap-2"
-                    >
-                      <div>
-                        <span className={`inline-block text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${badgeColor} mb-1`}>
-                          {evt.type}
-                        </span>
-                        <p className="text-slate-800 font-sans text-xs">{evt.label}</p>
-                      </div>
-                      <span className="text-[10px] text-slate-400 shrink-0 font-mono mt-0.5">
-                        {evt.timestamp}
-                      </span>
-                    </div>
-                  );
-                })
               )}
-            </CardContent>
+
+              {/* 2. AI Question Assistant */}
+              {copilotTab === 'questions' && (
+                <div className="space-y-3">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide block pb-1 border-b border-slate-100">
+                    AI Question Bank (Gemma / LLM)
+                  </span>
+                  <AIQuestionAssistant
+                    suggestions={DEFAULT_QUESTIONS}
+                    onSelectQuestion={(q) => handleDispatchQuestion(q, 'ai-generated')}
+                  />
+                </div>
+              )}
+
+              {/* 3. Document Consistency & Verification Red Flags */}
+              {copilotTab === 'documents' && (
+                <div className="space-y-3">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide block pb-1 border-b border-slate-100">
+                    Document Discrepancy Cross-Check
+                  </span>
+                  <DocumentConsistencyPanel candidateId={candidateId} />
+                </div>
+              )}
+
+              {/* 4. Background Integrity Event Feed */}
+              {copilotTab === 'integrity' && (
+                <div className="space-y-3">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide block pb-1 border-b border-slate-100">
+                    Live Integrity Logs
+                  </span>
+                  <IntegrityMonitorPanel
+                    events={integrityEvents}
+                    tabSwitches={tabSwitches}
+                    focusLosses={focusLosses}
+                    pasteEvents={pasteEvents}
+                    screenSharing={screenSharing}
+                    sessionActive={isMonitorLaunched}
+                  />
+                </div>
+              )}
+            </div>
           </Card>
         </div>
+
+        {/* ── RIGHT COLUMN: Active Q&A, Voice Transcription & AI Content Detection (7 cols) ── */}
+        <div className="lg:col-span-7 space-y-5">
+          {/* Active Question Dispatched to Candidate */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                Current Active Question (Live in Candidate Room)
+              </span>
+              <span className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full font-medium capitalize">
+                {currentCategory}
+              </span>
+            </div>
+
+            <AIQuestionCard
+              question={currentQuestion}
+              questionNumber={questionIndex + 1}
+              totalQuestions={DEFAULT_QUESTIONS.length + history.length}
+              category={currentCategory}
+            />
+          </div>
+
+          {/* Candidate Voice Feed Review & AI Speech Detection */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <Mic className="w-3.5 h-3.5 text-rose-500" />
+                Candidate Voice Feed & AI Speech Analysis
+              </span>
+              <button
+                onClick={() => handleDispatchQuestion(currentQuestion, currentCategory)}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
+              >
+                <RefreshCw className="w-3 h-3" /> Simulate Re-Answer
+              </button>
+            </div>
+
+            <CandidateAnswerReview
+              currentQuestion={currentQuestion}
+              candidateAnswer={latestAnswer}
+              isCandidateSpeaking={isCandidateSpeaking}
+              onFlagAnswer={(flagged) => {
+                addIntegrityEvent({
+                  eventType: 'manual_hr_flag',
+                  severity: 'high',
+                  timestamp: new Date().toISOString(),
+                  metadata: { reason: 'HR flagged response for review', question: currentQuestion },
+                });
+              }}
+              onNextQuestion={() => {
+                const nextIdx = (questionIndex + 1) % DEFAULT_QUESTIONS.length;
+                handleDispatchQuestion(DEFAULT_QUESTIONS[nextIdx].text, DEFAULT_QUESTIONS[nextIdx].category);
+              }}
+            />
+          </div>
+
+          {/* Custom Follow-Up Question Dispatcher */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-2">
+            <span className="text-xs font-bold text-slate-700 block">
+              Ask Spontaneous / Custom Follow-Up Question
+            </span>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={customQuestionInput}
+                onChange={(e) => setCustomQuestionInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleDispatchQuestion(customQuestionInput, 'follow-up')}
+                placeholder="Type question to push live to the candidate's screen..."
+                className="flex-1 text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => handleDispatchQuestion(customQuestionInput, 'follow-up')}
+                disabled={!customQuestionInput.trim()}
+                icon={Send}
+                className="px-4"
+              >
+                Push Question
+              </Button>
+            </div>
+          </div>
+
+          {/* Transcript History */}
+          {history.length > 0 && (
+            <Card className="p-4 shadow-xs border-slate-200">
+              <CardTitle className="text-xs uppercase tracking-wider text-slate-500 mb-3">
+                Completed Questions Transcript ({history.length})
+              </CardTitle>
+              <InterviewHistory history={history} />
+            </Card>
+          )}
+        </div>
       </div>
+
+      {/* End Session Confirmation Modal */}
+      {showEndModal && (
+        <EndInterviewModal
+          questionCount={history.length + (latestAnswer ? 1 : 0)}
+          onConfirm={() => {
+            setShowEndModal(false);
+            handleEndSession();
+          }}
+          onCancel={() => setShowEndModal(false)}
+        />
+      )}
     </div>
   );
 }

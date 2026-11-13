@@ -52,10 +52,6 @@ export function Hero() {
   return (
     <section className="relative overflow-hidden pt-16 pb-24 bg-gradient-to-b from-slate-50 via-white to-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-200/60 text-xs font-semibold text-indigo-700 mb-6">
-          <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
-          Powered by Gemma 4 Intelligence & Transparent Scoring
-        </div>
 
         <h1 className="text-4xl sm:text-6xl font-extrabold text-slate-900 tracking-tight max-w-4xl mx-auto leading-tight">
           Verify Every Claim. <br />
