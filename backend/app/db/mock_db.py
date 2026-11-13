@@ -9,6 +9,7 @@ class MockDB:
         self.verifications: Dict[str, dict] = {}
         self.interviews: Dict[str, dict] = {}
         self.ai_history: Dict[str, dict] = {}
+        self.users: Dict[str, dict] = {}
 
     def _get_collection(self, collection: str) -> Dict[str, dict]:
         return getattr(self, collection, {})

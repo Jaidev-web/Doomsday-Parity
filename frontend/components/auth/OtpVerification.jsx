@@ -8,35 +8,33 @@ import { toast } from '@/components/ui/Toast';
 export function OtpVerification({
   destination = 'your registered email',
   onVerify,
+  onResend,
   onBack,
-  portalType = 'candidate', // 'candidate' (emerald) or 'hr' (indigo)
-  expectedOtp = '742918',
+  portalType = 'candidate',
+  expectedOtp = '',
 }) {
   const [digits, setDigits] = useState(['', '', '', '', '', '']);
   const [timer, setTimer] = useState(45);
-  const [canResend, setCanResend] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState('');
   const inputRefs = useRef([]);
 
   const isCandidate = portalType === 'candidate';
   const themeAccent = isCandidate ? 'emerald' : 'indigo';
+  const normalizedExpectedOtp = String(expectedOtp || '').replace(/\D/g, '');
 
   useEffect(() => {
-    // Focus first input
     inputRefs.current[0]?.focus();
   }, []);
 
+
   useEffect(() => {
-    if (timer > 0) {
-      const interval = setInterval(() => {
-        setTimer((prev) => prev - 1);
-      }, 1000);
-      return () => clearInterval(interval);
-    } else {
-      setCanResend(true);
-    }
+    if (timer <= 0) return;
+    const interval = setInterval(() => setTimer((prev) => Math.max(0, prev - 1)), 1000);
+    return () => clearInterval(interval);
   }, [timer]);
+
+  const canResend = timer === 0;
 
   const handleDigitChange = (index, value) => {
     // Only accept numeric
@@ -94,39 +92,48 @@ export function OtpVerification({
     inputRefs.current[targetIdx]?.focus();
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
     if (!canResend) return;
-    setTimer(45);
-    setCanResend(false);
-    setDigits(['', '', '', '', '', '']);
-    setError('');
-    inputRefs.current[0]?.focus();
-    toast.success(`A fresh 6-digit OTP has been sent to ${destination}`, {
-      duration: 3500,
-    });
+    try {
+      await onResend?.();
+      setTimer(45);
+      setDigits(['', '', '', '', '', '']);
+      setError('');
+      inputRefs.current[0]?.focus();
+      toast.success(`A fresh verification code is ready for ${destination}.`, { duration: 3500 });
+    } catch (err) {
+      toast.error(err?.message || 'Could not resend the verification code.');
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const code = digits.join('');
+
     if (code.length < 6) {
       setError('Please enter all 6 digits of your verification code.');
       toast.error('Incomplete code. Please enter all 6 digits.');
       return;
     }
 
+    if (normalizedExpectedOtp && code !== normalizedExpectedOtp) {
+      setError('Incorrect verification code. Please try again.');
+      toast.error('Incorrect verification code. Please try again.');
+      return;
+    }
+
     setIsVerifying(true);
     toast.loading('Verifying one-time security code…', { id: 'otp-check' });
-
-    setTimeout(() => {
-      // In demo mode accept any 6-digit code or match expected
-      setIsVerifying(false);
+    try {
+      await onVerify?.(code);
       toast.dismiss('otp-check');
       toast.success('Security code verified successfully!', { duration: 3000 });
-      if (onVerify) {
-        onVerify(code);
-      }
-    }, 700);
+    } catch (err) {
+      toast.dismiss('otp-check');
+      setError(err?.message || 'Could not verify the code. Please try again.');
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   return (
@@ -145,7 +152,7 @@ export function OtpVerification({
           Enter Verification Code
         </h2>
         <p className="mt-2 text-xs sm:text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
-          We sent a 6-digit one-time password (OTP) to{' '}
+          Enter the 6-digit verification code for{' '}
           <span className="font-semibold text-slate-700">{destination}</span>.
         </p>
       </div>
@@ -230,7 +237,7 @@ export function OtpVerification({
             )}
 
             <div className="ml-auto">
-              {canResend ? (
+              {canResend ? onResend ? (
                 <button
                   type="button"
                   onClick={handleResend}
@@ -244,6 +251,8 @@ export function OtpVerification({
                   Resend code
                 </button>
               ) : (
+                <span className="text-slate-400">Request a new code to continue.</span>
+              ) : (
                 <span className="text-slate-400">
                   Resend code in <span className="font-semibold text-slate-600">{timer}s</span>
                 </span>
@@ -255,7 +264,11 @@ export function OtpVerification({
         {/* Demo Hint */}
         <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-center">
           <p className="text-[11px] text-slate-500">
-            <span className="font-semibold text-slate-700">Demo Code:</span> Any 6-digit code (e.g., <code className="bg-slate-200/80 px-1.5 py-0.5 rounded font-mono text-slate-800">123456</code>) will pass.
+            {normalizedExpectedOtp ? (
+              <>Demo verification code: <code className="font-mono font-bold text-slate-800">{normalizedExpectedOtp}</code></>
+            ) : (
+              <>Check your email inbox and spam folder for the verification code.</>
+            )}
           </p>
         </div>
       </form>
