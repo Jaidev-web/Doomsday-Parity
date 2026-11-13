@@ -4,8 +4,6 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Users,
-  FileCheck,
-  Fingerprint,
   Video,
   BarChart3,
   Settings,
@@ -21,8 +19,6 @@ export default function DashboardLayout({ children }) {
   const navItems = [
     { label: 'Overview', icon: LayoutDashboard, href: '/dashboard' },
     { label: 'Candidates', icon: Users, href: '/dashboard/candidates' },
-    { label: 'Credentials', icon: FileCheck, href: '/dashboard/credentials' },
-    { label: 'Identity', icon: Fingerprint, href: '/dashboard/identity' },
     { label: 'Interviews', icon: Video, href: '/dashboard/interviews' },
     { label: 'Reports', icon: BarChart3, href: '/dashboard/reports' },
     { label: 'Settings', icon: Settings, href: '/dashboard/settings' },
@@ -42,9 +38,6 @@ export default function DashboardLayout({ children }) {
               Trust<span className="text-indigo-600">Hire</span>
             </span>
           </Link>
-          <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-            MVP
-          </span>
         </div>
 
         {/* Navigation */}
@@ -112,7 +105,6 @@ export default function DashboardLayout({ children }) {
               </div>
               <div className="hidden sm:block text-left">
                 <span className="block text-xs font-semibold text-slate-900">Lead Recruiter</span>
-                <span className="block text-[10px] text-slate-500">Acme Enterprise</span>
               </div>
             </div>
           </div>

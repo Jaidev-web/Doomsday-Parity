@@ -19,7 +19,7 @@
    - **Dual Video Feeds**: Both portals display professional video tiles (Candidate sees HR interviewer feed + self preview; HR sees candidate proctoring feed + HR broadcast tile with mute/video controls).
    - **Background Integrity Telemetry**: Detects tab switching (Page Visibility API), window blur events, unauthorized typing, and clipboard paste bursts.
 4. **Deterministic Trust Scoring**: A rule-based, explainable 0–100 score (Credentials 40%, Identity 35%, Interview 25%) paired with **Gemma 4 AI** for plain-English recruiter summaries and risk analysis.
-5. **Dual-Portal Card Authentication System**: Role-segregated entry points for Candidates and HR/Recruiters, backed by anti-bot visual CAPTCHAs, 6-digit OTP verification, password reset workflows, and reactive hot toast telemetry.
+5. **Dual-Portal Authentication System**: Role-segregated Candidate and HR/Recruiter entry points, candidate anti-bot CAPTCHA, Firebase email-link sign-in, password recovery UI, and reactive toast notifications. The Firebase migration is currently incomplete; see Section 4.
 
 ---
 
@@ -31,6 +31,7 @@
 | **Authentication & Security** | Canvas API, SpeechSynthesis, Pub/Sub Toast Event Bus | Client-side dual authentication suite (Candidate & HR). Implements canvas distortion security CAPTCHAs with audio synthesis for candidates, 6-digit auto-advancing OTP boxes with resend countdowns, and 3-step password recovery. |
 | **Interview & Proctoring** | MediaRecorder API, HTML5 Canvas, FaceDetector API, WebRTC / WebM | Dedicated role-separated interview engine. Canvas-based eye gaze estimator with pupil/face centering heuristics and attention scoring. Dual-tile video architecture for candidate and interviewer feeds. |
 | **Speech-to-Text & AI Detection** | Local Whisper, Ollama + Gemma 4, LangChain | Voice recording via MediaRecorder (WebM/Opus) transcribing into text. Spoken answers analyzed via AI response detector (0–100% LLM score based on vocabulary complexity, filler density, and syntactic uniformity). |
+| **Authentication & Security** | Firebase Authentication email-link sign-in, Canvas API, SpeechSynthesis, Pub/Sub Toast Event Bus | Firebase email-link sign-in is the intended flow. The client callback exists, but the backend ID-token/profile handoff still needs integration; see Section 4. |
 | **Backend** | Python 3.13, FastAPI, Pydantic v2, Uvicorn, httpx, firebase-admin | Modular REST API with route segregation. Uses a dynamic `DatabaseManager` to switch between an in-memory `MockDB` (for demo/local development) and `FirebaseDB` (for production persistence) based on `DEMO_MODE` environment toggle. |
 | **AI Layer** | Gemma 4 integration via `AIService` & LangChain context | Supports live Gemma endpoints with automatic fallback to realistic `[Demo Mode]` responses if no API key is provided. Pre-seeded candidate response models for Sarah (18% AI), Marcus (88% AI), and Priya (42% AI). |
 | **Documents** | PyPDF2, python-docx, Pillow | Extracts text and PDF metadata (`/Author`, `/CreationDate`) for forensic tamper checks. |
@@ -50,7 +51,8 @@ Doomsday-Parity/
 │   │   │   ├── document.py               # DocumentResponse, DocumentUpload
 │   │   │   ├── verification.py           # VerificationResult schema
 │   │   │   ├── interview.py              # InterviewEvent, InterviewSession, Report
-│   │   │   └── ai_review.py              # AIQuestion, AIResponse, AIHistory
+│   │   │   ├── ai_review.py              # AIQuestion, AIResponse, AIHistory
+│   │   │   └── user.py                   # User/profile schemas
 │   │   ├── db/
 │   │   │   ├── manager.py                # Database factory (switches between Mock and Firebase)
 │   │   │   ├── mock_db.py                # Thread-safe in-memory store
@@ -65,6 +67,7 @@ Doomsday-Parity/
 │   │   │   ├── interview_service.py      # Suspicious event aggregation & reporting
 │   │   │   └── document_service.py       # PDF/DOCX text & metadata extractors
 │   │   └── routers/                      # REST API endpoints
+│   │       ├── auth.py                   # Firebase ID-token verification (integration pending)
 │   │       ├── candidates.py             # CRUD /api/candidates
 │   │       ├── documents.py              # Upload /api/candidates/{id}/documents
 │   │       ├── credentials.py            # /api/candidates/{id}/credentials
@@ -78,14 +81,15 @@ Doomsday-Parity/
 │
 ├── frontend/                             # Next.js 16 Web Application
 │   ├── app/                              # Next.js App Router
+│   │   ├── auth/email-link/page.jsx      # Firebase email-link completion callback
 │   │   ├── layout.js                     # Root layout importing tailwind.css & mounting <Toaster />
 │   │   ├── page.js                       # Public landing page (Hero, Features, HowItWorks, AI)
 │   │   ├── globals.css                   # Custom theme variables
 │   │   ├── tailwind.css                  # Compiled Tailwind utility classes
 │   │   ├── login/                        # Dual Portal Auth Gateway
 │   │   │   ├── page.jsx                  # Access portal selector (Candidate vs HR)
-│   │   │   ├── candidate/page.jsx        # Candidate Sign In / Sign Up, Captcha, OTP & Reset
-│   │   │   └── hr/page.jsx               # HR Recruiter Sign In / Sign Up, 2FA OTP & Reset
+│   │   │   ├── candidate/page.jsx        # Candidate Sign In / Sign Up, Captcha, email link & reset
+│   │   │   └── hr/page.jsx               # HR Sign In / Sign Up, email link & reset
 │   │   ├── signup/                       # Direct Registration Entry Points
 │   │   │   ├── candidate/page.jsx        # Dedicated candidate signup wrapper
 │   │   │   └── hr/page.jsx               # Dedicated HR team registration wrapper
@@ -129,6 +133,9 @@ Doomsday-Parity/
 │   │   │   ├── EndInterviewModal.jsx     # End session confirmation dialog
 │   │   │   ├── EthicalConsentModal.jsx   # Pre-interview proctoring disclosure & consent
 │   │   │   └── VoiceRecorder.jsx         # Candidate voice recording interface with waveform
+│   │   │   ├── EmailLinkNotice.jsx       # Inbox instructions and resend link action
+│   │   │   ├── OtpVerification.jsx       # Legacy demo OTP used by recovery UI
+│   │   │   └── ForgotPasswordFlow.jsx    # Demo recovery flow (Email -> demo OTP -> New Password)
 │   │   ├── ui/                           # Primitives: Button, Card, Badge, Modal, Input, etc.
 │   │   │   └── Toast.jsx                 # Hot toast notification system & <Toaster />
 │   │   ├── candidate/                    # TrustGauge, FindingCard, AIChat, CandidateCard
@@ -137,6 +144,7 @@ Doomsday-Parity/
 │   │
 │   ├── lib/
 │   │   ├── api.js                        # Unified fetch client with offline fallbacks
+│   │   ├── firebase.js                   # Firebase client and email-link helpers
 │   │   ├── constants.js                  # Demo data, thresholds, and questions
 │   │   ├── utils.js                      # Formatting, score colors, Tailwind merge
 │   │   ├── interviewData.js              # Backward-compatible re-export for interview mocks
@@ -148,6 +156,9 @@ Doomsday-Parity/
 │   │
 │   ├── INTERVIEW_API_CONTRACT.md         # Full REST API specification for Whisper & Gemma
 │   └── package.json                      # Dependencies and build scripts
+│   │   └── utils.js                      # Formatting, score colors, Tailwind merge
+│   ├── .env.firebase.example              # Firebase web config template (copy to .env.local)
+│   └── package.json                      # Dependencies and build scripts (Firebase SDK included)
 │
 ├── .env.example                          # Root environment template
 ├── .gitignore                            # Standard Node, Python, Next.js ignores
@@ -159,16 +170,18 @@ Doomsday-Parity/
 
 ## 4. Authentication Architecture & Security Details
 
-TrustHire enforces strict role separation from entry through card-based UI workflows:
+The intended login/signup design uses Firebase email-link sign-in for both roles. The current files are only partially migrated and must be reconciled before auth can work:
 
-1. **Dual Portal Selector (`/login`)**:
-   - Gateway card allowing users to route directly into Candidate or Recruiter workspaces.
+1. **Candidate and HR login pages** (`frontend/app/login/candidate/page.jsx`, `frontend/app/login/hr/page.jsx`) still call `api.auth.login()` and `api.auth.signup()` before sending the Firebase link.
+2. **API client** (`frontend/lib/api.js`) currently exposes only `api.auth.verifyToken()`. The signup/login methods those pages call no longer exist, so login and signup fail before a link is sent.
+3. **Email-link callback** (`frontend/app/auth/email-link/page.jsx`) completes Firebase client sign-in and stores a session, but does not call `api.auth.verifyToken()` with the Firebase ID token. The backend therefore does not receive verified user/profile data.
+4. **Backend token endpoint** (`backend/app/routers/auth.py`) declares `token` and `role` as plain function parameters. FastAPI treats these as query parameters, while the frontend API helper sends JSON. Use a Pydantic request model and send the token in a body; return a clear error when Firebase Admin cannot verify it.
+5. **Firebase Admin startup** (`backend/app/main.py`) calls `firebase_admin.initialize_app()` even when the credential path is missing. This relies on Application Default Credentials and can fail locally; it may also conflict with initialization inside `backend/app/db/firebase.py`. Initialize Firebase Admin once and share the app instance.
+6. **Firebase client setup** is in `frontend/lib/firebase.js`. Copy `frontend/.env.firebase.example` to `frontend/.env.local` and fill in the Firebase web app values. In Firebase Console enable Email/Password and Email link sign-in, and authorize `localhost` plus the deployed app domain.
+7. Login/signup use click-through links rather than numeric OTPs. `OtpVerification.jsx` remains only in the demo forgot-password UI, which is still a local mock and is not backed by Firebase.
+8. The pre-filled demo login buttons were removed because their placeholder email addresses cannot receive Firebase links. Use an inbox you can access.
 
-2. **Candidate Portal Auth (`/login/candidate`, `/signup/candidate`)**:
-   - **Color Theme**: Emerald (`#059669` / `bg-emerald-600`).
-   - **Anti-Bot Security Challenge (`<Captcha />`)**: Mandatory HTML5 Canvas distorted alphanumeric verification with noise dots, bezier line interference, rotation, and Web Speech API audio synthesis readout.
-   - **Demo Pre-fill**: Quick button to populate Sarah Chen (`cand-sarah-001`, Score: 87.0).
-   - **Verification**: Dispatches 6-digit OTP to registered candidate email before granting access to `/candidate`.
+The backend profile endpoint is intended to verify Firebase ID tokens before creating or retrieving role-specific profiles. Do not treat the current `sessionStorage` value alone as proof of backend authentication.
 
 3. **HR Recruiter Auth (`/login/hr`, `/signup/hr`)**:
    - **Color Theme**: Indigo / Slate (`#4f46e5` / `bg-indigo-600`).
@@ -190,6 +203,7 @@ TrustHire enforces strict role separation from entry through card-based UI workf
 6. **Hot Toast Notification System (`<Toast />`, `<Toaster />`)**:
    - Pub/sub architecture mounted in `app/layout.js`.
    - Fires toasts for user interactions: tab switching, captcha refresh/readout, OTP delivery, resend triggers, clipboard paste, login success, SSO launch, and demo pre-fill.
+The toast bus remains mounted in `frontend/app/layout.js` and reports auth errors, email-link send status, and form feedback.
 
 ---
 
@@ -297,6 +311,19 @@ pnpm run dev
 
 - **Frontend Compilation**: Verified with `next build` (Next.js 16.4.6 with Turbopack). All routes compile statically/dynamically with **0 errors**.
 - **Backend Test Suite**: Tested with `python run_full_verification.py`. All 11 test assertions passed (CRUD, calculations, AI fallbacks, interview telemetry, and document parsing).
+- **Historical baseline (before the current Firebase Auth refactor)**: `next build` was previously reported to compile all 21 routes, and `python run_full_verification.py` passed all 11 backend module checks. These checks have not been rerun against the current partial auth migration.
+- **Current auth work**: Firebase SDK package resolution succeeded and `git diff --check` passed. A full frontend build and end-to-end Firebase link/token verification have not been run.
+- **Known lint baseline**: The earlier full ESLint run reported 31 errors and 7 warnings across interview, dashboard, and UI files. Targeted auth lint had passed before the latest Firebase ID-token migration; rerun after reconciling the API calls below.
+- **Frontend Compilation**: Earlier `next build` was recorded to compile all **21 routes**:
+  - `/`
+  - `/login`
+  - `/login/candidate`
+  - `/login/hr`
+  - `/signup/candidate`
+  - `/signup/hr`
+  - `/candidate` (plus `/apply`, `/interview`, `/status`)
+  - `/dashboard` (plus `/candidates`, `/candidates/[id]`, `/candidates/[id]/interview`, `/credentials`, `/identity`, `/interviews`, `/reports`, `/settings`)
+- **Backend Test Suite**: Earlier run of `python run_full_verification.py` passed all 11 assertions (CRUD, calculations, AI fallbacks, interview telemetry, and document parsing).
 - **CSS Styling**: Built with Tailwind CSS v4 into `frontend/app/tailwind.css` and imported by `layout.js`.
 - **API Contract**: Defined in `frontend/INTERVIEW_API_CONTRACT.md` detailing schemas for Whisper, Gemma, LangChain, and WebRTC streaming.
 
@@ -319,6 +346,27 @@ pnpm run dev
 
 ### D. Firebase Integration & Persistence
 - Integrated `firebase-admin` and `DatabaseManager` to switch between `MockDB` (demo mode) and `FirebaseDB` (production mode).
+### E. Firebase Integration & Persistence
+- **Implemented Firestore Backend**: Fully integrated `firebase-admin` into the backend. 
+- **Dynamic Database Switching**: Introduced `DatabaseManager` in `backend/app/db/manager.py`. When `DEMO_MODE=False` is set in `.env`, the system automatically routes all CRUD operations to live Firestore collections instead of in-memory dictionaries.
+- **Seeding Support**: The `seed_demo_data()` function now supports pushing demo candidates directly to Firebase on the first run of a new environment.
+
+### F. Firebase Email-Link Authentication (in progress)
+- The requested sign-in experience is a Firebase email sign-in link. Login/signup pages show an inbox notice and resend action; numeric codes are no longer used for those flows.
+- Added the Firebase Web SDK (`firebase` dependency) to `frontend/package.json`, `package-lock.json`, and `pnpm-lock.yaml`.
+- Added `frontend/lib/firebase.js`, `frontend/components/auth/EmailLinkNotice.jsx`, and `frontend/app/auth/email-link/page.jsx`. The callback completes `signInWithEmailLink`, writes a role-specific session to `sessionStorage`, then redirects to the Candidate or HR area.
+- Added `frontend/.env.firebase.example`. Copy it to `frontend/.env.local`, fill the Firebase web app config, enable Email/Password plus Email link sign-in in Firebase Console, and authorize `localhost` and the deployed domain.
+- The current Firebase ID-token migration changed `backend/app/routers/auth.py`, `backend/app/models/user.py`, `backend/app/main.py`, and `frontend/lib/api.js` to remove password endpoints and add Firebase token verification. It is **not complete**: the login pages still call the removed `api.auth.login/signup`; the email-link callback does not send an ID token to the backend; and `/api/auth/verify-token` currently expects query parameters while the API helper sends a JSON body. `firebase_admin.initialize_app()` is also called without an explicit credential and may fail or conflict with Firestore initialization. Fix these mismatches before using auth.
+- Backend Firebase Admin credentials/project setup is required to verify ID tokens. The Gmail App Password discussed earlier is not used by this Firebase flow; revoke it if it was a real credential.
+- The standalone `ForgotPasswordFlow` remains a local demo flow using a fake OTP and does not currently use Firebase.
+
+### H. UI Polish: Header Cleanliness & Horizontal Trust Score Bar
+- **Removed "MVP" & "Acme Enterprise"**:
+  - Removed the `"MVP"` badge next to the TrustHire logo in the dashboard sidebar (`frontend/app/dashboard/layout.jsx`).
+  - Removed `"Acme Enterprise"` from the recruiter profile badge in the dashboard top navigation bar (`frontend/app/dashboard/layout.jsx`), keeping only the clean `"Lead Recruiter"` designation.
+- **Added Horizontal Trust Score Indicator Bars**:
+  - In the Candidates Directory table list view (`frontend/app/dashboard/candidates/page.jsx`), added a sleek horizontal progress bar under the trust score numbers (`87/100`, `42/100`, `64/100`), dynamically filled to the candidate's exact score and colored according to risk levels (green for high trust, red for critical review, amber for needs review).
+  - Also added the matching horizontal score bar to candidate cards (`frontend/components/candidate/CandidateCard.jsx`) for visual consistency across view modes.
 
 ---
 
@@ -328,3 +376,9 @@ pnpm run dev
 2. **Connect Live Gemma 4 Model**: Configure `GEMMA_API_BASE_URL` in `backend/.env` targeting local Ollama (`ollama run gemma:7b`).
 3. **WebRTC Video Signaling**: Replace simulated WebRTC tile feeds with live peer-to-peer signaling using Simple-Peer or LiveKit.
 4. **Configure Firebase**: Set `FIREBASE_CREDENTIALS_PATH` and `FIREBASE_PROJECT_ID` in `backend/.env` to persist sessions.
+If you are picking up work on this project, consider these high-leverage enhancements:
+1. **Finish Firebase Auth integration**: Reconcile frontend signup/login calls with the ID-token endpoint, post the ID token from the email-link callback, parse it via a Pydantic body model, and initialize Firebase Admin once with valid credentials.
+2. **Configure Firebase**: Fill `frontend/.env.local` from `frontend/.env.firebase.example`; enable Email/Password and Email link sign-in; authorize local and production domains; set backend `FIREBASE_CREDENTIALS_PATH` and `FIREBASE_PROJECT_ID` for token verification and Firestore persistence.
+3. **Real Gemma 4 Connection**: Configure `GEMMA_API_KEY` and `GEMMA_API_BASE_URL` in `backend/.env` to connect to a live Ollama or Vertex AI instance instead of demo mock responses.
+4. **Real WebRTC / Camera Feed**: Enhance `frontend/app/dashboard/candidates/[id]/interview/page.jsx` with real face-mesh or face-api.js detection for multi-face detection.
+5. **PDF Report Export**: Wire up client-side PDF export (e.g., using `jspdf` or `html2canvas`) on `/dashboard/reports` and candidate profiles.

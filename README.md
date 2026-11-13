@@ -77,6 +77,8 @@ Conversational AI powered by Gemma 4 that can analyze resumes, compare documents
 git clone <repo-url> Doomsday-Parity
 cd Doomsday-Parity
 cp .env.example .env
+cp backend/.env.example backend/.env
+cp frontend/.env.firebase.example frontend/.env.local
 ```
 
 ### 2. Start the Backend
@@ -106,12 +108,17 @@ Open `http://localhost:3000` in your browser.
 | Variable                   | Default                  | Description                                      |
 |----------------------------|--------------------------|--------------------------------------------------|
 | `NEXT_PUBLIC_API_URL`      | `http://localhost:8000`  | Backend API URL for the frontend                 |
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | *(Firebase web app value)* | Firebase Authentication client configuration |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | *(Firebase web app value)* | Firebase Authentication client configuration |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | *(Firebase web app value)* | Firebase Authentication client configuration |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | *(Firebase web app value)* | Firebase Authentication client configuration |
 | `DEMO_MODE`               | `true`                   | Enable demo mode with seeded data & mock AI      |
 | `FIREBASE_CREDENTIALS_PATH` | *(empty)*              | Path to Firebase service account JSON            |
 | `FIREBASE_STORAGE_BUCKET`  | *(empty)*               | Firebase Storage bucket name                     |
 | `GEMMA_API_KEY`            | *(empty)*                | API key for Gemma 4 AI service                   |
 | `GEMMA_API_BASE_URL`       | *(empty)*                | Base URL for Gemma 4 API endpoint                |
 | `GEMMA_MODEL`              | `gemma-4`                | Gemma model identifier                           |
+Email sign-in links are sent by Firebase Authentication. Configure the Firebase web app in `frontend/.env.local`, enable Email/Password and Email link sign-in in Firebase Authentication, and add the app domain to Authorized domains. During local development, add `localhost` as an authorized domain. Firebase's Email Link sign-in requires Email/Password and Email Link providers enabled in the Firebase console.
 
 ---
 

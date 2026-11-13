@@ -3,19 +3,26 @@ import { DEMO_CANDIDATES, DEMO_VERIFICATIONS, DEMO_ACTIVITIES } from './constant
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 async function safeFetch(endpoint, options = {}) {
+  const { throwOnError = false, ...fetchOptions } = options;
   try {
     const res = await fetch(`${API_BASE}${endpoint}`, {
       headers: {
         'Content-Type': 'application/json',
         ...(options.headers || {}),
       },
-      ...options,
+      ...fetchOptions,
     });
     if (!res.ok) {
-      throw new Error(`HTTP error ${res.status}`);
+      let detail = `Request failed (${res.status})`;
+      try {
+        const body = await res.json();
+        if (typeof body?.detail === 'string') detail = body.detail;
+      } catch {}
+      throw new Error(detail);
     }
     return await res.json();
   } catch (err) {
+    if (throwOnError) throw err;
     console.warn(`API call failed to ${endpoint}, using fallback:`, err.message);
     return null;
   }
@@ -141,6 +148,15 @@ export const api = {
       const data = await safeFetch(`/api/candidates/${candidateId}/ai/history`);
       if (data) return data;
       return { candidate_id: candidateId, conversations: [] };
+    },
+  },
+  auth: {
+    verifyToken: async (token, role) => {
+      return safeFetch('/api/auth/verify-token', {
+        method: 'POST',
+        body: JSON.stringify({ token, role }),
+        throwOnError: true,
+      });
     },
   },
 };

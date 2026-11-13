@@ -53,15 +53,6 @@ export default function CandidateLayout({ children }) {
               );
             })}
           </nav>
-
-          <div className="flex items-center gap-3">
-            <Link
-              href="/dashboard"
-              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium hidden sm:inline-flex items-center gap-1"
-            >
-              Switch to HR Portal →
-            </Link>
-          </div>
         </div>
       </header>
 

@@ -2,10 +2,21 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.routers import candidates, documents, credentials, identity, interviews, trust, ai_assistant
+import firebase_admin
+from firebase_admin import credentials
+
+from app.routers import candidates, documents, credentials, identity, interviews, trust, ai_assistant, auth
 from app.demo.seed import seed_demo_data
 from app.config import settings
 
+# Initialize Firebase
+if settings.FIREBASE_CREDENTIALS_PATH:
+    cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_PATH)
+    firebase_admin.initialize_app(cred)
+else:
+    # Fallback or error if not configured
+    print("Warning: Firebase credentials not configured.")
+    firebase_admin.initialize_app()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,6 +51,7 @@ app.include_router(identity.router, prefix="/api")
 app.include_router(interviews.router, prefix="/api")
 app.include_router(trust.router, prefix="/api")
 app.include_router(ai_assistant.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
 
 
 @app.get("/")

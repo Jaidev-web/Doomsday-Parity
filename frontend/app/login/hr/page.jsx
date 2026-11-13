@@ -21,28 +21,31 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { OtpVerification } from '@/components/auth/OtpVerification';
+import { EmailLinkNotice } from '@/components/auth/EmailLinkNotice';
 import { ForgotPasswordFlow } from '@/components/auth/ForgotPasswordFlow';
 import { toast } from '@/components/ui/Toast';
+import { api } from '@/lib/api';
+import { ensureFirebaseReady, sendEmailSignInLink } from '@/lib/firebase';
 
 export default function HRAuthPage({ initialTab = 'login' }) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState(initialTab); // 'login' | 'signup' | 'forgot' | 'otp'
+  const [activeTab, setActiveTab] = useState(initialTab); // login | signup | forgot | email-link
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Form states
   const [form, setForm] = useState({
-    name: 'Alex Morgan',
-    email: 'recruiter@trusthire.ai',
-    company: 'Apex Technologies',
-    role: 'Lead Technical Recruiter',
-    password: 'password123',
-    confirmPassword: 'password123',
-    require2FA: true,
+    name: '',
+    email: '',
+    company: '',
+    role: '',
+    password: '',
+    confirmPassword: '',
+    requireEmailLink: true,
   });
 
-  const [otpTarget, setOtpTarget] = useState('');
+  const [linkTarget, setLinkTarget] = useState('');
+  const [resendingLink, setResendingLink] = useState(false);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -57,7 +60,7 @@ export default function HRAuthPage({ initialTab = 'login' }) {
     }
   };
 
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
 
     if (!form.email || !form.password) {
@@ -68,22 +71,37 @@ export default function HRAuthPage({ initialTab = 'login' }) {
     setLoading(true);
     toast.loading('Verifying recruiter credentials…', { id: 'hr-auth' });
 
-    setTimeout(() => {
+    try {
+      if (form.requireEmailLink) ensureFirebaseReady();
+      const response = await api.auth.login({
+        email: form.email,
+        password: form.password,
+        role: 'hr',
+      });
       setLoading(false);
       toast.dismiss('hr-auth');
 
-      if (form.require2FA) {
-        setOtpTarget(form.email);
-        toast.info('2-Factor Security Challenge: OTP dispatched to work email');
-        setActiveTab('otp');
+      if (response === null || response?.detail) {
+        throw new Error(response?.detail || 'Invalid email or password.');
+      }
+
+      if (form.requireEmailLink) {
+        await sendEmailSignInLink({ email: form.email, role: 'hr', name: response.name });
+        setLinkTarget(form.email);
+        toast.success('Credentials verified. Click the sign-in link sent to your email.');
+        setActiveTab('email-link');
       } else {
         toast.success('Welcome back! Launching HR Operations Hub…');
         router.push('/dashboard');
       }
-    }, 800);
+    } catch (err) {
+      setLoading(false);
+      toast.dismiss('hr-auth');
+      toast.error(err?.message || 'Authentication failed. Please try again.');
+    }
   };
 
-  const handleSignupSubmit = (e) => {
+  const handleSignupSubmit = async (e) => {
     e.preventDefault();
 
     if (!form.name || !form.email || !form.company || !form.password) {
@@ -104,29 +122,47 @@ export default function HRAuthPage({ initialTab = 'login' }) {
     setLoading(true);
     toast.loading('Provisioning recruiter workspace…', { id: 'hr-reg' });
 
-    setTimeout(() => {
+    try {
+      ensureFirebaseReady();
+      const response = await api.auth.signup({
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        role: 'hr',
+        phone: form.company,
+      });
+      await sendEmailSignInLink({ email: form.email, role: 'hr', name: form.name });
+      setLinkTarget(form.email);
       setLoading(false);
       toast.dismiss('hr-reg');
-      setOtpTarget(form.email);
-      toast.success(`Verification code dispatched to corporate email: ${form.email}`);
-      setActiveTab('otp');
-    }, 900);
+
+      if (response === null || response?.detail) {
+        throw new Error(response?.detail || 'Registration failed. User might already exist.');
+      }
+
+      toast.success(`Account created. Click the sign-in link sent to ${form.email}.`);
+      setActiveTab('email-link');
+    } catch (err) {
+      setLoading(false);
+      toast.dismiss('hr-reg');
+      toast.error(err?.message || 'Registration failed. Please try again.');
+    }
   };
 
-  const handleOtpVerified = () => {
-    toast.success('Recruiter identity verified! Loading Operations Hub…', { duration: 3000 });
-    setTimeout(() => {
-      router.push('/dashboard');
-    }, 700);
+  const handleEmailLinkResend = async () => {
+    setResendingLink(true);
+    try {
+      await sendEmailSignInLink({ email: linkTarget || form.email, role: 'hr', name: form.name });
+      toast.success('A new sign-in link was sent.');
+    } catch (err) {
+      toast.error(err?.message || 'Could not resend the sign-in link.');
+    } finally {
+      setResendingLink(false);
+    }
   };
 
   const handleSSOLogin = (provider) => {
-    toast.loading(`Authenticating via enterprise SSO (${provider})…`, { id: 'sso-toast' });
-    setTimeout(() => {
-      toast.dismiss('sso-toast');
-      toast.success(`Authenticated with ${provider}! Redirecting…`);
-      router.push('/dashboard');
-    }, 800);
+    toast.error(`${provider} login is not configured for this environment. Please use email sign-in.`);
   };
 
   return (
@@ -258,12 +294,12 @@ export default function HRAuthPage({ initialTab = 'login' }) {
               <span className="text-[11px] font-mono text-slate-400"></span>
             </div>
 
-            {/* Sub-views: OTP, Forgot Password, or Main Tabs */}
-            {activeTab === 'otp' ? (
-              <OtpVerification
-                destination={otpTarget || form.email}
-                portalType="hr"
-                onVerify={handleOtpVerified}
+            {/* Sub-views: email link, forgot password, or Main Tabs */}
+            {activeTab === 'email-link' ? (
+              <EmailLinkNotice
+                email={linkTarget || form.email}
+                onResend={handleEmailLinkResend}
+                isResending={resendingLink}
                 onBack={() => setActiveTab('login')}
               />
             ) : activeTab === 'forgot' ? (
@@ -486,21 +522,21 @@ export default function HRAuthPage({ initialTab = 'login' }) {
                   {activeTab === 'login' && (
                     <div className="flex items-center gap-2 pt-1">
                       <input
-                        id="require-2fa"
+                        id="require-email-link"
                         type="checkbox"
-                        checked={form.require2FA}
+                        checked={form.requireEmailLink}
                         onChange={(e) => {
-                          setForm({ ...form, require2FA: e.target.checked });
+                          setForm({ ...form, requireEmailLink: e.target.checked });
                           toast.info(
                             e.target.checked
-                              ? 'Two-Factor Authentication (OTP) enabled'
-                              : 'Two-Factor Authentication disabled'
+                              ? 'Email-link verification enabled'
+                              : 'Email-link verification disabled'
                           );
                         }}
                         className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
-                      <label htmlFor="require-2fa" className="text-xs text-slate-600 select-none">
-                        Require Two-Factor (OTP) verification on login
+                      <label htmlFor="require-email-link" className="text-xs text-slate-600 select-none">
+                          Require email-link verification on login
                       </label>
                     </div>
                   )}
@@ -533,9 +569,9 @@ export default function HRAuthPage({ initialTab = 'login' }) {
                         Authenticating Workspace…
                       </span>
                     ) : activeTab === 'login' ? (
-                      form.require2FA ? 'Continue to 2FA OTP' : 'Sign In to Dashboard'
+                      form.requireEmailLink ? 'Continue with email link' : 'Sign In to Dashboard'
                     ) : (
-                      'Register Team & Send OTP'
+                      'Register Team & Send Sign-in Link'
                     )}
                   </Button>
                 </form>
@@ -595,29 +631,8 @@ export default function HRAuthPage({ initialTab = 'login' }) {
                   </button>
                 </div>
 
-                {/* Pre-fill Demo Recruiter Box */}
-                <div className="mt-6 p-3 rounded-xl bg-indigo-50/80 border border-indigo-200/80">
-                  <div className="flex items-center justify-between text-xs text-indigo-800 font-semibold mb-1">
-                    <span>⚡ Demo Recruiter Account</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForm({
-                          ...form,
-                          email: 'recruiter@trusthire.ai',
-                          password: 'password123',
-                          require2FA: true,
-                        });
-                        toast.success('Pre-filled: recruiter@trusthire.ai');
-                      }}
-                      className="underline hover:text-indigo-950 font-bold cursor-pointer"
-                    >
-                      Use Demo
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-indigo-700 leading-snug">
-                    Instant access to live candidate records (Sarah Chen, Marcus Rivera, Priya Sharma) and Gemma 4 AI Assistant.
-                  </p>
+                <div className="mt-6 rounded-xl border border-indigo-200/80 bg-indigo-50/80 p-3 text-[11px] leading-snug text-indigo-700">
+                  Sign-in links go to the work email address you enter. Use an inbox you can open to finish signing in.
                 </div>
               </>
             )}
