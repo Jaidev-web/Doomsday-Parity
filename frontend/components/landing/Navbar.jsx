@@ -32,14 +32,14 @@ export function Navbar() {
 
         {/* Two distinct portal buttons in top navbar */}
         <div className="flex items-center gap-2.5">
-          <Link href="/candidate">
+          <Link href="/login/candidate">
             <Button variant="secondary" size="sm" icon={User} className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
-              Candidate Portal
+              Candidate Login
             </Button>
           </Link>
-          <Link href="/dashboard">
+          <Link href="/login/hr">
             <Button size="sm" icon={ShieldCheck} className="bg-indigo-600 hover:bg-indigo-700">
-              HR Portal
+              HR Login
             </Button>
           </Link>
         </div>
@@ -100,10 +100,10 @@ export function Hero() {
                 </li>
               </ul>
             </div>
-            <div className="mt-6 pt-4 border-t border-slate-100">
-              <Link href="/candidate">
+            <div className="mt-6 pt-4 border-t border-slate-100 flex gap-2">
+              <Link href="/login/candidate" className="flex-1">
                 <Button size="md" className="w-full bg-emerald-600 hover:bg-emerald-700 font-semibold" icon={ArrowRight}>
-                  Enter Candidate Portal
+                  Candidate Sign In / Register
                 </Button>
               </Link>
             </div>
@@ -138,10 +138,10 @@ export function Hero() {
                 </li>
               </ul>
             </div>
-            <div className="mt-6 pt-4 border-t border-slate-100">
-              <Link href="/dashboard">
+            <div className="mt-6 pt-4 border-t border-slate-100 flex gap-2">
+              <Link href="/login/hr" className="flex-1">
                 <Button size="md" className="w-full bg-indigo-600 hover:bg-indigo-700 font-semibold" icon={ArrowRight}>
-                  Enter HR Dashboard
+                  Recruiter Sign In / Register
                 </Button>
               </Link>
             </div>
