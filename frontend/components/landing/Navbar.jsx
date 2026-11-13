@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Shield, ArrowRight } from 'lucide-react';
+import { Shield, ArrowRight, User, ShieldCheck, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
 export function Navbar() {
@@ -16,6 +16,9 @@ export function Navbar() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
+          <a href="#roles" className="hover:text-slate-900 transition-colors">
+            Portals
+          </a>
           <a href="#features" className="hover:text-slate-900 transition-colors">
             Features
           </a>
@@ -27,15 +30,16 @@ export function Navbar() {
           </a>
         </nav>
 
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard">
-            <Button variant="secondary" size="sm">
-              Live Demo
+        {/* Two distinct portal buttons in top navbar */}
+        <div className="flex items-center gap-2.5">
+          <Link href="/candidate">
+            <Button variant="secondary" size="sm" icon={User} className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+              Candidate Portal
             </Button>
           </Link>
-          <Link href="/dashboard/candidates/new">
-            <Button size="sm" icon={ArrowRight}>
-              Verify Candidate
+          <Link href="/dashboard">
+            <Button size="sm" icon={ShieldCheck} className="bg-indigo-600 hover:bg-indigo-700">
+              HR Portal
             </Button>
           </Link>
         </div>
@@ -46,9 +50,9 @@ export function Navbar() {
 
 export function Hero() {
   return (
-    <section className="relative overflow-hidden pt-20 pb-28 bg-gradient-to-b from-slate-50 via-white to-white">
+    <section className="relative overflow-hidden pt-16 pb-24 bg-gradient-to-b from-slate-50 via-white to-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-200/60 text-xs font-semibold text-indigo-700 mb-8">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-200/60 text-xs font-semibold text-indigo-700 mb-6">
           <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
           Powered by Gemma 4 Intelligence & Transparent Scoring
         </div>
@@ -60,22 +64,88 @@ export function Hero() {
           </span>
         </h1>
 
-        <p className="mt-6 text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          TrustHire shields modern recruiters from candidate fraud through multi-vector verification:
-          tamper-evident credential validation, biometric identity checks, and real-time interview integrity tracking.
+        <p className="mt-5 text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
+          TrustHire operates two distinct, dedicated environments: a secure portal for candidates to submit credentials
+          and take proctored assessments, and a comprehensive dashboard for HR to audit fraud telemetry and verify trust scores.
         </p>
 
-        <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-          <Link href="/dashboard">
-            <Button size="lg" className="w-full sm:w-auto text-base">
-              Explore Demo Dashboard
-            </Button>
-          </Link>
-          <Link href="/dashboard/candidates/cand-marcus-002">
-            <Button variant="secondary" size="lg" className="w-full sm:w-auto text-base">
-              Inspect Flagged Candidate
-            </Button>
-          </Link>
+        {/* Dual Portal Gateway Cards */}
+        <div id="roles" className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto text-left">
+          {/* Card 1: Candidate Only */}
+          <div className="p-7 rounded-2xl bg-white border-2 border-emerald-500/30 hover:border-emerald-500 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Section 1 • Candidate Only
+                </span>
+                <User className="w-5 h-5 text-emerald-600" />
+              </div>
+              <h2 className="text-xl font-extrabold text-slate-900">Candidate Portal</h2>
+              <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed">
+                For applicants to submit documents, verify professional profiles, and participate in proctored technical
+                assessments.
+              </p>
+              <ul className="mt-4 space-y-1.5 text-xs text-slate-600">
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  Submit resumes, certificates & government ID
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  Join scheduled live technical interview room
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  Track submission status and requirements
+                </li>
+              </ul>
+            </div>
+            <div className="mt-6 pt-4 border-t border-slate-100">
+              <Link href="/candidate">
+                <Button size="md" className="w-full bg-emerald-600 hover:bg-emerald-700 font-semibold" icon={ArrowRight}>
+                  Enter Candidate Portal
+                </Button>
+              </Link>
+            </div>
+          </div>
+
+          {/* Card 2: HR Only */}
+          <div className="p-7 rounded-2xl bg-white border-2 border-indigo-500/30 hover:border-indigo-500 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  Section 2 • HR & Recruiter Only
+                </span>
+                <ShieldCheck className="w-5 h-5 text-indigo-600" />
+              </div>
+              <h2 className="text-xl font-extrabold text-slate-900">HR & Recruiter Portal</h2>
+              <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed">
+                Full administrative access to investigate fraud signals, review rule-based trust scores, and consult the Gemma 4 AI
+                reviewer.
+              </p>
+              <ul className="mt-4 space-y-1.5 text-xs text-slate-600">
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                  Inspect deep candidate dossiers & trust gauges (0–100)
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                  Review PDF metadata discrepancies & tenure conflicts
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                  Live proctoring monitor & Gemma 4 AI reasoning chat
+                </li>
+              </ul>
+            </div>
+            <div className="mt-6 pt-4 border-t border-slate-100">
+              <Link href="/dashboard">
+                <Button size="md" className="w-full bg-indigo-600 hover:bg-indigo-700 font-semibold" icon={ArrowRight}>
+                  Enter HR Dashboard
+                </Button>
+              </Link>
+            </div>
+          </div>
         </div>
 
         {/* Stats strip */}

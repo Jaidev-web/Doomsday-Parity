@@ -66,15 +66,21 @@ c:\Doomsday-Parity\
 ├── frontend/                             # Next.js 16 Web Application
 │   ├── app/                              # Next.js App Router
 │   │   ├── layout.js                     # Root layout importing tailwind.css
-│   │   ├── page.js                       # Public landing page (Hero, Features, AI)
+│   │   ├── page.js                       # Public landing page (Portal selector, Features, AI)
 │   │   ├── globals.css                   # Custom theme variables
 │   │   ├── tailwind.css                  # Compiled Tailwind utility classes
-│   │   └── dashboard/
+│   │   ├── candidate/                    # SECTION 1: CANDIDATE ONLY PORTAL
+│   │   │   ├── layout.jsx                # Candidate portal header & navigation
+│   │   │   ├── page.jsx                  # Candidate portal home & action cards
+│   │   │   ├── apply/page.jsx            # Candidate document & profile submission wizard
+│   │   │   ├── interview/page.jsx        # Live proctored assessment room (camera & questions)
+│   │   │   └── status/page.jsx           # Application verification progress tracker
+│   │   └── dashboard/                    # SECTION 2: HR ONLY PORTAL
 │   │       ├── layout.jsx                # Recruiter navigation shell with sidebar
 │   │       ├── page.jsx                  # Operations Hub overview & statistics
 │   │       ├── candidates/
 │   │       │   ├── page.jsx              # Candidate list (Search, Filter, Table/Grid)
-│   │       │   ├── new/page.jsx          # 4-Step Candidate submission wizard
+│   │       │   ├── new/page.jsx          # Add candidate manually
 │   │       │   └── [id]/
 │   │       │       ├── page.jsx          # Candidate profile (Gauge, Tabs, Gemma AI Chat)
 │   │       │       └── interview/page.jsx# Live proctoring monitor & event logger
