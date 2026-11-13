@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Users, ShieldCheck, AlertTriangle, XOctagon, Plus, ArrowRight, ExternalLink } from 'lucide-react';
+import { Users, ShieldCheck, AlertTriangle, XOctagon, ArrowRight } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { ActivityFeed, TrustDistribution } from '@/components/dashboard/ActivityFeed';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -43,19 +43,12 @@ export default function DashboardOverviewPage() {
 
   return (
     <div className="space-y-8">
-      {/* Page Title & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Recruiter Operations Hub</h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Real-time fraud audit telemetry, credential validation signals, and candidate trust scores.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard/candidates/new">
-            <Button icon={Plus}>Add Candidate</Button>
-          </Link>
-        </div>
+      {/* Page Title */}
+      <div>
+        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Recruiter Operations Hub</h1>
+        <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          Real-time fraud audit telemetry, credential validation signals, and candidate trust scores.
+        </p>
       </div>
 
       {/* Stats Grid */}

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Filter, LayoutGrid, List, Shield, ArrowUpDown, ChevronRight } from 'lucide-react';
+import { Search, Filter, LayoutGrid, List, Shield, ArrowUpDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/Table';
@@ -49,16 +49,11 @@ export default function CandidatesListPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Candidates Directory</h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Complete database of applicant verification records, identity validation, and interview logs.
-          </p>
-        </div>
-        <Link href="/dashboard/candidates/new">
-          <Button icon={Plus}>Add Candidate</Button>
-        </Link>
+      <div>
+        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Candidates Directory</h1>
+        <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          Complete database of applicant verification records, identity validation, and interview logs.
+        </p>
       </div>
 
       {/* Filter and Search Bar */}

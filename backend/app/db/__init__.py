@@ -1,1 +1,1 @@
-from .mock_db import MockDB, db
+from .manager import db

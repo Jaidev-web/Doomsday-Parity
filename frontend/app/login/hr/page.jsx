@@ -228,11 +228,11 @@ export default function HRAuthPage({ initialTab = 'login' }) {
         {/* Top Navbar */}
         <div className="flex items-center justify-between max-w-md w-full mx-auto">
           <Link
-            href="/login"
+            href="/"
             className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            Portal Selector
+            Back to Home
           </Link>
 
           <div className="flex items-center gap-2">
@@ -255,7 +255,7 @@ export default function HRAuthPage({ initialTab = 'login' }) {
                 <ShieldCheck className="w-3.5 h-3.5" />
                 HR Operations Portal
               </div>
-              <span className="text-[11px] font-mono text-slate-400">Admin Only</span>
+              <span className="text-[11px] font-mono text-slate-400"></span>
             </div>
 
             {/* Sub-views: OTP, Forgot Password, or Main Tabs */}

@@ -21,7 +21,7 @@
 |---|---|---|
 | **Frontend** | Next.js 16 (App Router), React 19, Tailwind CSS v4, Lucide React | Single-page and dashboard components built in `.jsx` for rapid iteration. Uses Tailwind CSS compiled into `app/tailwind.css`. Global `<Toaster />` mounted in root `layout.js` for reactive event notifications. |
 | **Authentication & Security** | Canvas API, SpeechSynthesis, Pub/Sub Toast Event Bus | Client-side dual authentication suite (Candidate & HR). Implements canvas distortion security CAPTCHAs with audio synthesis for candidates, 6-digit auto-advancing OTP boxes with resend countdowns, and 3-step password recovery. |
-| **Backend** | Python 3.13, FastAPI, Pydantic v2, Uvicorn, httpx | Modular REST API with route segregation. In-memory dictionary database (`MockDB`) with automatic demo seeding on startup — no external DB or Firebase required to run. |
+| **Backend** | Python 3.13, FastAPI, Pydantic v2, Uvicorn, httpx, firebase-admin | Modular REST API with route segregation. Uses a dynamic `DatabaseManager` to switch between an in-memory `MockDB` (for demo/local development) and `FirebaseDB` (for production persistence) based on `DEMO_MODE` environment toggle. |
 | **AI Layer** | Gemma 4 integration via `AIService` | Supports live Gemma endpoints with automatic fallback to realistic `[Demo Mode]` responses if no API key is provided. |
 | **Documents** | PyPDF2, python-docx, Pillow | Extracts text and PDF metadata (`/Author`, `/CreationDate`) for forensic tamper checks. |
 
@@ -42,8 +42,9 @@ c:\Doomsday-Parity\
 │   │   │   ├── interview.py              # InterviewEvent, InterviewSession, Report
 │   │   │   └── ai_review.py              # AIQuestion, AIResponse, AIHistory
 │   │   ├── db/
+│   │   │   ├── manager.py                # Database factory (switches between Mock and Firebase)
 │   │   │   ├── mock_db.py                # Thread-safe in-memory store
-│   │   │   └── firebase.py               # Firebase client stub with fallback
+│   │   │   └── firebase.py               # Firestore implementation with Admin SDK
 │   │   ├── demo/
 │   │   │   └── seed.py                   # Pre-seeded test candidates (Sarah, Marcus, Priya)
 │   │   ├── services/
@@ -89,7 +90,6 @@ c:\Doomsday-Parity\
 │   │       ├── page.jsx                  # Operations Hub overview & statistics
 │   │       ├── candidates/
 │   │       │   ├── page.jsx              # Candidate list (Search, Filter, Table/Grid)
-│   │       │   ├── new/page.jsx          # Add candidate manually
 │   │       │   └── [id]/
 │   │       │       ├── page.jsx          # Candidate profile (Gauge, Tabs, Gemma AI Chat)
 │   │       │       └── interview/page.jsx# Live proctoring monitor & event logger
@@ -221,10 +221,36 @@ pnpm run dev
 
 ---
 
-## 8. Immediate Next Steps / Roadmap for Contributors
+## 8. Recent Architectural Changes & Updates (Changelog)
+
+### A. Candidate-Driven Onboarding Enforcement
+- **HR Cannot Add Candidates**: Per the hiring integrity problem statement, HR recruiters must not manually create candidate profiles. Candidates must self-register, submit their resume/documents, and complete their verification dossier through the **Candidate Portal** (`/candidate/apply`).
+- **Removed HR Buttons & Routes**:
+  - Removed `+ New Candidate` button from the HR sidebar in `frontend/app/dashboard/layout.jsx`.
+  - Removed `+ Add Candidate` button from the Operations Hub in `frontend/app/dashboard/page.jsx`.
+  - Removed `+ Add Candidate` button from the Candidates Directory in `frontend/app/dashboard/candidates/page.jsx`.
+  - Deleted the obsolete manual creation route directory `frontend/app/dashboard/candidates/new/`.
+
+### B. Cleaned HR Top Navigation
+- Removed the redundant `Public Site` button and divider from the HR top bar in `frontend/app/dashboard/layout.jsx`. Clicking the TrustHire logo in the upper-left of the sidebar navigates directly to the Home page (`/`).
+
+### C. Removed Direct Public Profile Bypass ("View Marcus Rivera Dossier")
+- Removed the public "View Marcus Rivera Dossier" button on the landing page (`frontend/app/page.js`), enforcing that all candidate dossiers and trust records remain gated behind the authenticated HR portal.
+
+### D. Tailwind CSS v4 & Next.js 16 Turbopack Fix
+- Compiled `@tailwindcss/cli` output into `frontend/app/tailwind.css` and linked it directly in `frontend/app/layout.js`, ensuring all utility classes, colors, gradients, and responsive layouts render properly without Turbopack subprocess conflicts.
+
+### D. Firebase Integration & Persistence
+- **Implemented Firestore Backend**: Fully integrated `firebase-admin` into the backend. 
+- **Dynamic Database Switching**: Introduced `DatabaseManager` in `backend/app/db/manager.py`. When `DEMO_MODE=False` is set in `.env`, the system automatically routes all CRUD operations to live Firestore collections instead of in-memory dictionaries.
+- **Seeding Support**: The `seed_demo_data()` function now supports pushing demo candidates directly to Firebase on the first run of a new environment.
+
+---
+
+## 9. Immediate Next Steps / Roadmap for Contributors
 
 If you are picking up work on this project, consider these high-leverage enhancements:
 1. **Real Gemma 4 Connection**: Configure `GEMMA_API_KEY` and `GEMMA_API_BASE_URL` in `backend/.env` to connect to a live Ollama or Vertex AI instance instead of demo mock responses.
 2. **Real WebRTC / Camera Feed**: Enhance `frontend/app/dashboard/candidates/[id]/interview/page.jsx` with real face-mesh or face-api.js detection for multi-face detection.
-3. **Firebase Persistence**: Connect a real Firebase project by setting `FIREBASE_CREDENTIALS_PATH` in `backend/app/config.py` to persist uploaded candidate documents and audits across restarts.
+3. **Configure Firebase**: While implemented, a live project requires setting `FIREBASE_CREDENTIALS_PATH` and `FIREBASE_PROJECT_ID` in `backend/.env` to activate persistence.
 4. **PDF Report Export**: Wire up client-side PDF export (e.g., using `jspdf` or `html2canvas`) on `/dashboard/reports` and candidate profiles.

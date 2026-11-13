@@ -10,13 +10,10 @@ import {
   BarChart3,
   Settings,
   Shield,
-  Plus,
-  ExternalLink,
   ChevronRight,
   Bell,
   Search,
 } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
 
 export default function DashboardLayout({ children }) {
   const pathname = usePathname();
@@ -48,15 +45,6 @@ export default function DashboardLayout({ children }) {
           <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
             MVP
           </span>
-        </div>
-
-        {/* Quick Action Button */}
-        <div className="p-4 border-b border-slate-100">
-          <Link href="/dashboard/candidates/new" className="block">
-            <Button size="sm" className="w-full justify-center" icon={Plus}>
-              New Candidate
-            </Button>
-          </Link>
         </div>
 
         {/* Navigation */}
@@ -118,13 +106,6 @@ export default function DashboardLayout({ children }) {
           </div>
 
           <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium"
-            >
-              Public Site <ExternalLink className="w-3 h-3" />
-            </Link>
-            <div className="h-4 w-px bg-slate-200" />
             <div className="flex items-center gap-2 pl-2">
               <div className="w-8 h-8 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center">
                 RH
