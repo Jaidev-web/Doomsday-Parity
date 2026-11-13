@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -24,9 +24,17 @@ import { toast } from '@/components/ui/Toast';
 import { storeAppSession } from '@/lib/auth-session';
 import { mongoAuth } from '@/lib/mongo-auth';
 
-export default function CandidateAuthPage({ initialTab = 'login' }) {
+export default function CandidateAuthPage(props) {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-slate-500">Loading sign in…</div>}>
+      <CandidateAuthForm {...props} />
+    </Suspense>
+  );
+}
+
+function CandidateAuthForm({ initialTab = 'login' }) {
   const searchParams = useSearchParams();
-  const interviewId = searchParams.get('interviewId');
+  const interviewSessionId = searchParams.get('session_id') || searchParams.get('interviewId');
   const [activeTab, setActiveTab] = useState(initialTab); // login | signup | otp | email-link
   const [loginMethod, setLoginMethod] = useState('password');
   const [loading, setLoading] = useState(false);
@@ -95,14 +103,16 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
         await mongoAuth.sendSignInLink({ email, role: 'candidate' });
         setLinkTarget(email);
         setNoticeKind('sign-in');
-        if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
+        if (interviewSessionId) window.localStorage.setItem('pending_interview_id', interviewSessionId);
         setActiveTab('email-link');
         toast.success('Sign-in link sent to your email.');
       } else {
         const { user } = await mongoAuth.signInWithPassword({ email, password: form.password, role: 'candidate' });
         storeAppSession('candidate', user);
-        if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
-        window.location.replace('/candidate');
+        if (interviewSessionId) window.localStorage.setItem('pending_interview_id', interviewSessionId);
+        window.location.replace(interviewSessionId
+          ? `/candidate/interview?session_id=${encodeURIComponent(interviewSessionId)}`
+          : '/candidate');
       }
     } catch (err) {
       toast.dismiss('auth-toast');
@@ -168,8 +178,10 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
   const handleOtpVerify = async (code) => {
     const { user } = await mongoAuth.verifySignupOtp({ email: otpEmail, role: 'candidate', code });
     storeAppSession('candidate', user);
-    if (interviewId) window.localStorage.setItem('pending_interview_id', interviewId);
-    window.location.replace('/candidate');
+    if (interviewSessionId) window.localStorage.setItem('pending_interview_id', interviewSessionId);
+    window.location.replace(interviewSessionId
+      ? `/candidate/interview?session_id=${encodeURIComponent(interviewSessionId)}`
+      : '/candidate');
   };
 
   const handleOtpResend = async () => {

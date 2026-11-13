@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft,
   ArrowRight,
   Check,
   User,
@@ -187,14 +186,8 @@ export default function CandidateApplyPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
-      {/* Back button & Title */}
+      {/* Title */}
       <div>
-        <Link
-          href="/candidate"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 mb-3"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to Candidate Portal
-        </Link>
         <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Submit Your Verification Documents</h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-1">
           Provide your employment documentation, resume, and profile links for company verification.

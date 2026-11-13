@@ -34,6 +34,7 @@ import InterviewCompletion from '@/components/interview/InterviewCompletion';
 import {
   createInterviewSession, getInterviewSession, recordIntegrityEvent,
   dispatchInterviewQuestion, saveInterviewQuestionQueue, generateQuestionsFromResume,
+  completeInterviewSession,
 } from '@/lib/interview/api';
 
 const COPILOT_TABS = [
@@ -50,7 +51,7 @@ export default function HRInterviewMonitorPage() {
   const candidateId = params?.id || 'cand-sarah-001';
 
   // ── Candidate info ────────────────────────────────────────────────────────
-  const [candidate, setCandidate] = useState(null);
+  const candidate = DEMO_CANDIDATES.find((item) => item.id === candidateId) || DEMO_CANDIDATES[0];
 
   // ── Monitor status ────────────────────────────────────────────────────────
   const [isMonitorLaunched, setIsMonitorLaunched] = useState(false);
@@ -64,6 +65,8 @@ export default function HRInterviewMonitorPage() {
     : '';
   const [completed, setCompleted] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
+  const [isEndingSession, setIsEndingSession] = useState(false);
+  const [endSessionError, setEndSessionError] = useState('');
 
   // ── Camera & Gaze Proctoring Stream ───────────────────────────────────────
   const [mediaStream, setMediaStream] = useState(null);
@@ -101,6 +104,8 @@ export default function HRInterviewMonitorPage() {
   const lastAnswerSignatureRef = useRef(null);
   const lastQuestionVersionRef = useRef(0);
   const lastArchivedAnswerIdRef = useRef(null);
+  const [lastArchivedAnswerId, setLastArchivedAnswerId] = useState(null);
+  const questionSequenceRef = useRef(0);
   const questionQueueRef = useRef([]);
   const questionQueueSaveRef = useRef(Promise.resolve());
   const questionQueueSaveVersionRef = useRef(0);
@@ -211,13 +216,7 @@ export default function HRInterviewMonitorPage() {
       mounted = false;
       clearInterval(interval);
     };
-  }, [isMonitorLaunched, sessionId]);
-
-  // ── Load candidate ────────────────────────────────────────────────────────
-  useEffect(() => {
-    const found = DEMO_CANDIDATES.find((c) => c.id === candidateId) || DEMO_CANDIDATES[0];
-    setCandidate(found);
-  }, [candidateId]);
+  }, [isMonitorLaunched, sessionId, mediaStream]);
 
   // ── Timer loop ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -314,12 +313,13 @@ export default function HRInterviewMonitorPage() {
 
     try {
       const dispatched = await dispatchInterviewQuestion(sessionId, {
-        question_id: resolvedId || `q-${Date.now()}`,
+        question_id: resolvedId || `q-local-${++questionSequenceRef.current}`,
         question: text.trim(),
         category: resolvedCategory,
       });
       if (latestAnswer && lastArchivedAnswerIdRef.current !== latestAnswer.id) {
         lastArchivedAnswerIdRef.current = latestAnswer.id;
+        setLastArchivedAnswerId(latestAnswer.id);
         setHistory((prev) => [...prev, {
           question: latestAnswer.question || currentQuestion,
           category: currentCategory,
@@ -397,23 +397,44 @@ export default function HRInterviewMonitorPage() {
     }
   };
 
-  const handleEndSession = () => {
-    if (mediaStream) {
-      mediaStream.getTracks().forEach((t) => t.stop());
+  const handleEndSession = async () => {
+    if (!sessionId || isEndingSession) return;
+    setIsEndingSession(true);
+    setEndSessionError('');
+    try {
+      const result = await completeInterviewSession(sessionId, {
+        ended_by: 'hr',
+        question_count: history.length + (latestAnswer && lastArchivedAnswerIdRef.current !== latestAnswer.id ? 1 : 0),
+        duration_seconds: sessionDuration,
+      });
+      if (result.status !== 'completed') throw new Error('The backend did not confirm that the interview ended.');
+      mediaStream?.getTracks().forEach((track) => track.stop());
+      setMediaStream(null);
+      setIsMonitorLaunched(false);
+      setShowEndModal(false);
+      setCompleted(true);
+    } catch (error) {
+      setEndSessionError(error.message || 'Could not end the interview. Please try again.');
+    } finally {
+      setIsEndingSession(false);
     }
-    setCompleted(true);
   };
 
   const handleResetSession = () => {
+    router.replace(`/dashboard/candidates/${candidateId}/interview`);
     setCompleted(false);
     setIsMonitorLaunched(false);
+    setSessionId(null);
     setSessionDuration(0);
+    setEndSessionError('');
     setHistory([]);
     setIntegrityEvents([]);
     setTabSwitches(0);
     setTypingDetections(0);
     setGazeAwayCount(0);
     setLatestAnswer(null);
+    lastArchivedAnswerIdRef.current = null;
+    setLastArchivedAnswerId(null);
   };
 
   const formatDuration = (s) => {
@@ -549,7 +570,7 @@ export default function HRInterviewMonitorPage() {
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
                 The candidate joins through the invitation URL for backend session <code className="bg-white px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-700 font-mono text-[11px]">{sessionId || 'created when launched'}</code>.
-                They see the HR interviewer's camera tile, read dispatched questions, and record answers via microphone.
+                They see the HR interviewer&apos;s camera tile, read dispatched questions, and record answers via microphone.
               </p>
               <div className="pt-1">
                 <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-mono font-medium">
@@ -716,12 +737,11 @@ export default function HRInterviewMonitorPage() {
       {/* End Session Confirmation Modal */}
       {showEndModal && (
         <EndInterviewModal
-          questionCount={history.length + (latestAnswer && lastArchivedAnswerIdRef.current !== latestAnswer.id ? 1 : 0)}
-          onConfirm={() => {
-            setShowEndModal(false);
-            handleEndSession();
-          }}
+          questionCount={history.length + (latestAnswer && lastArchivedAnswerId !== latestAnswer.id ? 1 : 0)}
+          onConfirm={handleEndSession}
           onCancel={() => setShowEndModal(false)}
+          isEnding={isEndingSession}
+          error={endSessionError}
         />
       )}
     </div>

@@ -256,14 +256,19 @@ The database comes pre-seeded on backend startup (`app/demo/seed.py`) with three
 
 ## 7. How to Run the Project Locally
 
+The frontend and backend must both be running. Starting only Next.js still lets pages render, but demo sign-in and interview session creation will fail because they call the FastAPI service on port `8000`.
+
 ### Terminal 1: Backend (FastAPI)
 ```bash
 cd backend
-python -m uvicorn app.main:app --reload --port 8000
+source .venv/bin/activate
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 - Interactive Swagger API docs: `http://localhost:8000/docs`
 - Health check: `http://localhost:8000/health`
 - Candidates list: `http://localhost:8000/api/candidates`
+- Confirm the health check returns `200` before testing demo sign-in or creating interview links.
+- Demo password sign-in requires `DEMO_MODE=true`, `DEMO_AUTH_ENABLED=true`, and matching `DEMO_HR_*` / `DEMO_CANDIDATE_*` values in the ignored `backend/.env`. The local demo emails are `hr@gmail.com` and `test@gmail.com`; passwords are configured locally and must not be committed.
 
 ### Terminal 2: Frontend (Next.js)
 ```bash
@@ -278,6 +283,17 @@ pnpm run dev
 - HR Dashboard: `http://localhost:3000/dashboard`
 - Candidate Profile: `http://localhost:3000/dashboard/candidates/cand-sarah-001`
 - Live HR Interview Monitor: `http://localhost:3000/dashboard/candidates/cand-sarah-001/interview`
+
+### HR Interview Link Flow
+
+1. Sign in to the HR portal and open **Interviews**.
+2. Choose **Open HR Monitor** for a candidate, then select **Launch Interview Monitor**. Launching creates the active backend interview session.
+3. After the session is created, the monitor displays **Share this interview** with a copyable candidate URL. The link is not available on the Interviews list or before monitor launch because it needs the session ID.
+4. The candidate opens the shared URL and signs in through the Candidate portal. The URL's `session_id` is preserved through sign-in and opens that active interview room.
+
+The local URL uses `localhost:3000`, which points to the current computer. It works for a candidate using the same computer, but not for a candidate on another device. For remote candidates, host the frontend and backend on reachable addresses, configure the frontend API base URL and backend `FRONTEND_ORIGINS` for those addresses, and share the hosted URL. Interview data uses an in-memory database in demo mode, so keep the backend running for the entire session; restarting it clears active demo sessions.
+
+If Firefox reports that it cannot connect to `localhost:3000`, check that the frontend is running. If login or **Launch Interview Monitor** fails after the frontend loads, check `http://localhost:8000/health` and start the backend as well.
 
 ---
 
@@ -374,6 +390,42 @@ pnpm run dev
 - **Added Horizontal Trust Score Indicator Bars**:
   - In the Candidates Directory table list view (`frontend/app/dashboard/candidates/page.jsx`), added a sleek horizontal progress bar under the trust score numbers (`87/100`, `42/100`, `64/100`), dynamically filled to the candidate's exact score and colored according to risk levels (green for high trust, red for critical review, amber for needs review).
   - Also added the matching horizontal score bar to candidate cards (`frontend/components/candidate/CandidateCard.jsx`) for visual consistency across view modes.
+
+### I. Collapsible Sidebar & Swapping Transition Animations
+- **Collapsible Sidebar (Open by Default)**:
+  - Added collapsible state `isCollapsed = false` (default open) in `frontend/app/dashboard/layout.jsx`.
+  - Smooth width transition: `w-64` when open and `w-20` when collapsed with `transition-all duration-300 ease-in-out`.
+  - Added collapse/expand controls:
+    - Sidebar header toggle button (`PanelLeftClose`).
+    - Collapsed quick expand action button (`PanelLeft`).
+    - Header search bar quick toggle button (`PanelLeft` / `PanelLeftClose`).
+  - Collapsed state displays centered navigation icons with floating hover tooltips and an interactive compact pulse indicator for Gemma 4 AI status.
+- **Swapping Transition Animations**:
+  - **Sliding Active Pill**: An active indicator backdrop pill (`bg-indigo-50/90 border border-indigo-200/70 shadow-2xs`) glides vertically between navigation items with cubic-bezier physics (`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]`) whenever an element is clicked.
+  - **Left Edge Accent Bar**: An indigo accent bar glides along with the active pill.
+  - **Page Content Swapping**: The `<main>` element includes `key={pathname}` with an animated fade transition (`animate-in fade-in-50 duration-200`) so switching views feels smooth and responsive.
+
+### J. Single Global Back Navigation & Recruiter Identity
+- **Single Back Button per Page**:
+  - Maintained the persistent Back button (`<button onClick={() => router.back()}><ArrowLeft /> Back</button>`) directly in the sticky top navigation bars of both the **HR Dashboard** (`frontend/app/dashboard/layout.jsx`) and the **Candidate Portal** (`frontend/app/candidate/layout.jsx`).
+  - Audited and eliminated all duplicate in-page Back buttons across all views (`candidates/page.jsx`, `reports/page.jsx`, `settings/page.jsx`, `credentials/page.jsx`, `identity/page.jsx`, `candidates/[id]/page.jsx`, `candidates/[id]/interview/page.jsx`, `candidate/page.jsx`, `candidate/apply/page.jsx`, `candidate/status/page.jsx`, `candidate/interview/page.jsx`), ensuring strictly **only 1 Back button/option** exists on every page.
+- **HR Identity Display ("Reiner Hemming")**:
+  - Updated the recruiter profile widget in `frontend/app/dashboard/layout.jsx` to render **"Reiner Hemming"** in muted text directly underneath **"Lead Recruiter"**, matching the profile avatar initials **RH**.
+
+### K. Sidebar Toggle Button Clean-up
+- **Single Sidebar Toggle in `<aside>`**:
+  - Removed the duplicate/redundant secondary sidebar toggle button from the dashboard top navigation header.
+  - Kept strictly **only 1 sidebar toggle button**, cleanly positioned inside the sidebar header itself:
+    - When expanded: clicking the `PanelLeftClose` icon collapses the sidebar to compact icon-only mode (`w-20`).
+    - When collapsed: clicking the centered `PanelLeft` icon expands the sidebar back to its default open state (`w-64`).
+
+### L. Candidate Portal Smooth Transition Animations
+- **Horizontal Sliding Active Indicator**:
+  - Added a dynamic measurement-based sliding active pill backdrop (`bg-emerald-50 border border-emerald-200 shadow-2xs`) in `frontend/app/candidate/layout.jsx`.
+  - Glides smoothly between `Portal Home`, `Submit Documents`, `Join Interview Room`, and `Application Status` using cubic-bezier easing (`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]`).
+  - Added gentle icon hover scaling (`group-hover:scale-110`) and smooth label color transitions.
+- **Page Swapping Transition**:
+  - Mounted `<main key={pathname} className="animate-in fade-in-50 duration-200">` in the candidate layout so transitioning between candidate pages provides the same seamless swapping fade effect as the recruiter dashboard.
 
 ---
 

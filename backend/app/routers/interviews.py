@@ -1,5 +1,6 @@
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, File, Form, HTTPException, UploadFile
 from datetime import datetime
+from typing import Dict, Optional
 import uuid
 import os
 import tempfile
@@ -122,6 +123,24 @@ async def get_interview(session_id: str):
     session = db.get("interviews", session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
+    return session
+
+
+@router.post("/{session_id}/complete")
+async def complete_interview_session(session_id: str, summary: Optional[Dict] = Body(default=None)):
+    session = db.get("interviews", session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    if session.get("status") == "active":
+        changes = {
+            "status": "completed",
+            "ended_at": datetime.utcnow().isoformat(),
+        }
+        if summary is not None:
+            changes["completion_summary"] = summary
+        session = db.update("interviews", session_id, changes)
+
     return session
 
 

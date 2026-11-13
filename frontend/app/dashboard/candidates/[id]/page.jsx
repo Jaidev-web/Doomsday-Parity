@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft,
   Shield,
   FileCheck,
   Fingerprint,
@@ -146,14 +145,13 @@ export default function CandidateProfilePage() {
 
   return (
     <div className="space-y-6">
-      {/* Back button & Breadcrumb */}
+      {/* Header Info & Actions */}
       <div className="flex items-center justify-between">
-        <Link
-          href="/dashboard/candidates"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to candidates
-        </Link>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <span>Candidate Dossier</span>
+          <span className="text-slate-300">/</span>
+          <span className="font-semibold text-slate-700">{currentCand.name}</span>
+        </div>
         <div className="flex items-center gap-2">
           <Link href={`/dashboard/candidates/${currentCand.id}/interview`}>
             <Button variant="secondary" size="sm" icon={Video}>

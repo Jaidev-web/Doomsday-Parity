@@ -3,7 +3,7 @@
 import { X, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
-export default function EndInterviewModal({ onConfirm, onCancel, questionCount }) {
+export default function EndInterviewModal({ onConfirm, onCancel, questionCount, isEnding = false, error = '' }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
@@ -18,9 +18,12 @@ export default function EndInterviewModal({ onConfirm, onCancel, questionCount }
             </p>
           </div>
         </div>
+        {error && <p role="alert" className="text-xs text-rose-700">{error}</p>}
         <div className="flex gap-3">
-          <Button variant="secondary" size="md" onClick={onCancel} className="flex-1">Cancel</Button>
-          <Button variant="danger" size="md" onClick={onConfirm} className="flex-1">End Session</Button>
+          <Button variant="secondary" size="md" onClick={onCancel} disabled={isEnding} className="flex-1">Cancel</Button>
+          <Button variant="danger" size="md" onClick={onConfirm} disabled={isEnding} className="flex-1">
+            {isEnding ? 'Ending session…' : 'End Session'}
+          </Button>
         </div>
       </div>
     </div>

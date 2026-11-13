@@ -78,10 +78,8 @@ export function submitInterviewAnswer(sessionId, answer) {
   });
 }
 
-export async function completeInterviewSession(sessionId, summary) {
-  // BACKEND INTEGRATION: POST /api/interviews/{sessionId}/complete
-  // Body: { summary, integrity_score, qa_count }
-  return interviewFetch(INTERVIEW_ENDPOINTS.completeSession(sessionId), {
+export function completeInterviewSession(sessionId, summary = {}) {
+  return strictInterviewFetch(INTERVIEW_ENDPOINTS.completeSession(sessionId), {
     method: 'POST',
     body: JSON.stringify(summary),
   });
