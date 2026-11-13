@@ -236,11 +236,11 @@ export default function CandidateAuthPage({ initialTab = 'login' }) {
         {/* Top Navbar */}
         <div className="flex items-center justify-between max-w-md w-full mx-auto">
           <Link
-            href="/login"
+            href="/"
             className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            Portal Selector
+            Back to Home
           </Link>
 
           <div className="flex items-center gap-2">
