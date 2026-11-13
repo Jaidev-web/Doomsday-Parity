@@ -16,6 +16,8 @@ import {
   Bell,
   Search,
   ArrowLeft,
+  Menu,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { RoleSessionGuard, signOutRoleSession } from '@/components/auth/RoleSessionGuard';
@@ -25,6 +27,7 @@ export default function DashboardLayout({ children }) {
   const router = useRouter();
   // Sidebar default is open (isCollapsed = false)
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const navItems = [
     { label: 'Overview', icon: LayoutDashboard, href: '/dashboard' },
@@ -43,11 +46,20 @@ export default function DashboardLayout({ children }) {
   return (
     <RoleSessionGuard role="hr">
     <div className="min-h-screen flex bg-slate-50 text-slate-900">
+      {isMobileNavOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setIsMobileNavOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[1px] lg:hidden"
+        />
+      )}
       {/* Collapsible Sidebar */}
       <aside
         className={cn(
-          'border-r border-slate-200 bg-white flex flex-col shrink-0 sticky top-0 h-screen z-30 transition-all duration-300 ease-in-out',
-          isCollapsed ? 'w-20' : 'w-64'
+          'fixed inset-y-0 left-0 z-50 flex h-screen w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:z-30 lg:translate-x-0',
+          isCollapsed ? 'lg:w-20' : 'lg:w-64',
+          isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         {/* Logo & Toggle Header */}
@@ -127,6 +139,7 @@ export default function DashboardLayout({ children }) {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={() => setIsMobileNavOpen(false)}
                     className={cn(
                       'group relative flex items-center h-10 rounded-xl text-sm font-medium transition-all duration-200 select-none',
                       isCollapsed ? 'justify-center px-0' : 'px-3.5 gap-3',
@@ -210,20 +223,29 @@ export default function DashboardLayout({ children }) {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="h-16 border-b border-slate-200 bg-white/80 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-20">
-          <div className="flex items-center gap-3 flex-1 max-w-md">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-3 backdrop-blur-md sm:px-6">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 lg:max-w-md">
+            <button
+              type="button"
+              onClick={() => setIsMobileNavOpen((open) => !open)}
+              aria-label="Open navigation"
+              aria-expanded={isMobileNavOpen}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 lg:hidden"
+            >
+              {isMobileNavOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            </button>
             {/* Global Back Button (Single back option in top bar) */}
             <button
               type="button"
               onClick={() => router.back()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-slate-100 border border-slate-200 bg-white transition-all shadow-2xs shrink-0 group"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition-all hover:bg-slate-100 hover:text-indigo-600 group sm:px-3"
               title="Go back to previous page"
             >
               <ArrowLeft className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-600 transition-colors" />
               <span>Back</span>
             </button>
 
-            <div className="relative w-full">
+            <div className="relative hidden w-full sm:block">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
@@ -252,7 +274,7 @@ export default function DashboardLayout({ children }) {
         {/* Page Content with Swapping Fade Animation */}
         <main
           key={pathname}
-          className="flex-1 p-6 lg:p-8 max-w-7xl w-full mx-auto animate-in fade-in-50 duration-200"
+          className="mx-auto w-full max-w-7xl flex-1 p-4 animate-in fade-in-50 duration-200 sm:p-6 lg:p-8"
         >
           {children}
         </main>

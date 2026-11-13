@@ -33,6 +33,7 @@ import {
 } from '@/lib/firebase';
 
 const DEMO_HR_EMAIL = 'hr@gmail.com';
+const DEMO_CANDIDATE_EMAIL = 'test@gmail.com';
 
 export default function HRAuthPage(props) {
   return (
@@ -87,6 +88,11 @@ function HRAuthForm({ initialTab = 'login' }) {
     const email = form.email.trim();
     if (!email) {
       toast.error('Please enter your work email.');
+      return;
+    }
+
+    if (activeTab === 'login' && email.toLowerCase() === DEMO_CANDIDATE_EMAIL) {
+      toast.error('That is the candidate demo account. Use Candidate Sign In instead.');
       return;
     }
 
@@ -514,6 +520,14 @@ function HRAuthForm({ initialTab = 'login' }) {
                         className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
                       />
                     </div>
+                    {activeTab === 'login' && form.email.trim().toLowerCase() === DEMO_CANDIDATE_EMAIL && (
+                      <p className="mt-1.5 text-xs text-amber-700" role="status">
+                        This is the candidate demo email.{' '}
+                        <Link href="/login/candidate" className="font-semibold underline underline-offset-2 hover:text-amber-900">
+                          Go to Candidate Sign In
+                        </Link>
+                      </p>
+                    )}
                   </div>
 
                   {activeTab === 'login' && loginMethod === 'password' && (

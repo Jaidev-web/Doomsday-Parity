@@ -277,14 +277,19 @@ The database comes pre-seeded on backend startup (`app/demo/seed.py`) with three
 
 ## 7. How to Run the Project Locally
 
+The frontend and backend must both be running. Starting only Next.js still lets pages render, but demo sign-in and interview session creation will fail because they call the FastAPI service on port `8000`.
+
 ### Terminal 1: Backend (FastAPI)
 ```bash
 cd backend
-python -m uvicorn app.main:app --reload --port 8000
+source .venv/bin/activate
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 - Interactive Swagger API docs: `http://localhost:8000/docs`
 - Health check: `http://localhost:8000/health`
 - Candidates list: `http://localhost:8000/api/candidates`
+- Confirm the health check returns `200` before testing demo sign-in or creating interview links.
+- Demo password sign-in requires `DEMO_MODE=true`, `DEMO_AUTH_ENABLED=true`, and matching `DEMO_HR_*` / `DEMO_CANDIDATE_*` values in the ignored `backend/.env`. The local demo emails are `hr@gmail.com` and `test@gmail.com`; passwords are configured locally and must not be committed.
 
 ### Terminal 2: Frontend (Next.js)
 ```bash
@@ -299,6 +304,17 @@ pnpm run dev
 - HR Dashboard: `http://localhost:3000/dashboard`
 - Candidate Profile: `http://localhost:3000/dashboard/candidates/cand-sarah-001`
 - Live HR Interview Monitor: `http://localhost:3000/dashboard/candidates/cand-sarah-001/interview`
+
+### HR Interview Link Flow
+
+1. Sign in to the HR portal and open **Interviews**.
+2. Choose **Open HR Monitor** for a candidate, then select **Launch Interview Monitor**. Launching creates the active backend interview session.
+3. After the session is created, the monitor displays **Share this interview** with a copyable candidate URL. The link is not available on the Interviews list or before monitor launch because it needs the session ID.
+4. The candidate opens the shared URL and signs in through the Candidate portal. The URL's `session_id` is preserved through sign-in and opens that active interview room.
+
+The local URL uses `localhost:3000`, which points to the current computer. It works for a candidate using the same computer, but not for a candidate on another device. For remote candidates, host the frontend and backend on reachable addresses, configure the frontend API base URL and backend `FRONTEND_ORIGINS` for those addresses, and share the hosted URL. Interview data uses an in-memory database in demo mode, so keep the backend running for the entire session; restarting it clears active demo sessions.
+
+If Firefox reports that it cannot connect to `localhost:3000`, check that the frontend is running. If login or **Launch Interview Monitor** fails after the frontend loads, check `http://localhost:8000/health` and start the backend as well.
 
 ---
 

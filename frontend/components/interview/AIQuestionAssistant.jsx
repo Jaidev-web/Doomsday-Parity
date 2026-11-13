@@ -72,7 +72,7 @@ export default function AIQuestionAssistant({ suggestions, onSelectQuestion, onG
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
           {loading ? 'Generating with Gemma…' : 'Generate another question'}
         </button>
-        <p className="text-xs text-center text-slate-400">Choose Add to queue, then dispatch it when ready.</p>
+        <p className="text-xs text-center text-slate-400">Select a suggestion to send it live, or use the ordered queue below.</p>
       </div>
     </div>
   );

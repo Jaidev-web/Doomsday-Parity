@@ -39,10 +39,46 @@ import {
 
 const COPILOT_TABS = [
   { id: 'resume',     label: 'Resume Scanner', Icon: FileText },
-  { id: 'questions',  label: 'AI Questions',   Icon: Sparkles },
   { id: 'documents',  label: 'Discrepancies',  Icon: Clipboard },
   { id: 'integrity',  label: 'Integrity Logs', Icon: Shield },
 ];
+
+function IntegrityGauge({ score }) {
+  const radius = 18;
+  const circumference = 2 * Math.PI * radius;
+  const color = score >= 80 ? '#059669' : score >= 50 ? '#d97706' : '#e11d48';
+  const offset = circumference * (1 - score / 100);
+
+  return (
+    <div
+      className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5"
+      role="img"
+      aria-label={`Candidate integrity ${score}%`}
+      title="Live candidate integrity score"
+    >
+      <svg className="h-11 w-11 shrink-0" viewBox="0 0 44 44" aria-hidden="true">
+        <circle cx="22" cy="22" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="4" transform="rotate(-90 22 22)" />
+        <circle
+          cx="22"
+          cy="22"
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          transform="rotate(-90 22 22)"
+          className="transition-[stroke-dashoffset] duration-500"
+        />
+        <text x="22" y="23" textAnchor="middle" dominantBaseline="middle" fill="#0f172a" fontSize="9" fontWeight="700">
+          {score}%
+        </text>
+      </svg>
+      <span className="text-[10px] font-semibold leading-tight text-slate-600">Candidate<br />integrity</span>
+    </div>
+  );
+}
 
 export default function HRInterviewMonitorPage() {
   const params = useParams();
@@ -416,6 +452,8 @@ export default function HRInterviewMonitorPage() {
     setIntegrityEvents([]);
     setTabSwitches(0);
     setTypingDetections(0);
+    setFocusLosses(0);
+    setPasteEvents(0);
     setGazeAwayCount(0);
     setLatestAnswer(null);
   };
@@ -430,6 +468,8 @@ export default function HRInterviewMonitorPage() {
   const isCritical = tabSwitches >= 5 || gazeAwayCount >= 5;
   const isWarning = tabSwitches >= 2 || gazeAwayCount >= 2 || latestAnswer?.flaggedForReview || history.some((h) => h.aiFlag || h.aiScore >= 40);
   const overallRisk = isCritical ? 'critical' : isWarning ? 'warning' : 'clean';
+  const idleTimeouts = integrityEvents.filter((event) => event.eventType === 'idle_timeout').length;
+  const liveIntegrityScore = Math.max(0, 100 - tabSwitches * 5 - pasteEvents * 8 - focusLosses * 3 - idleTimeouts * 2);
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER: Session Completed Summary
@@ -568,16 +608,7 @@ export default function HRInterviewMonitorPage() {
             Live Monitor Active
           </div>
 
-          {/* Overall Integrity Score */}
-          <div className={`px-2.5 py-1.5 rounded-full text-xs font-semibold border ${
-            gazeAssessment.status === 'high'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-              : gazeAssessment.status === 'low'
-              ? 'bg-rose-50 border-rose-200 text-rose-700'
-              : 'bg-slate-50 border-slate-200 text-slate-600'
-          }`}>
-            Integrity: {gazeAssessment.status === 'high' ? 'HIGH' : gazeAssessment.status === 'low' ? 'LOW' : 'WAITING'}
-          </div>
+          <IntegrityGauge score={liveIntegrityScore} />
 
           {/* End Session Button */}
           <Button variant="danger" size="sm" onClick={() => setShowEndModal(true)}>
@@ -606,48 +637,46 @@ export default function HRInterviewMonitorPage() {
         {shareError && <p role="alert" className="text-xs text-rose-700 lg:ml-64">{shareError}</p>}
       </section>
 
-      {/* Main 2-Column Responsive Layout (5 cols left, 7 cols right on desktop) */}
+      {/* Main 2-Column Responsive Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full">
-        {/* ── LEFT COLUMN: Dual Videos, Proctoring & HR Copilot Tools (5 cols) ── */}
-        <div className="lg:col-span-5 space-y-5">
+        {/* ── LEFT COLUMN: Candidate video, HR preview, telemetry and copilot tools ── */}
+        <div className="lg:col-span-6 space-y-5">
           {/* Card 1: Dual Live Video Monitoring Feeds */}
           <Card className="p-4 space-y-4 shadow-xs border-slate-200">
-            {/* Tile A: Candidate Live Feed with Eye Movement Tracking */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Eye className="w-4 h-4 text-indigo-600" />
-                  Candidate Eye Gaze Monitor
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono">WebRTC Feed</span>
+            <div className="grid grid-cols-12 items-start gap-3">
+              {/* Candidate gets the primary video area; HR preview stays secondary. */}
+              <div className="col-span-12 min-w-0 sm:col-span-7">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <Eye className="w-4 h-4 text-indigo-600" />
+                    Candidate
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">Interview feed</span>
+                </div>
+
+                <CameraMonitorPanel
+                  active={isMonitorLaunched}
+                  gazeStatus={gazeAssessment.status}
+                  attentionPct={gazeAssessment.attentionPct}
+                  faceDetected={gazeAssessment.faceDetected}
+                  candidateName={candidate?.name}
+                />
               </div>
 
-              <CameraMonitorPanel
-                active={isMonitorLaunched}
-                gazeStatus={gazeAssessment.status}
-                attentionPct={gazeAssessment.attentionPct}
-                faceDetected={gazeAssessment.faceDetected}
-                candidateName={candidate?.name}
-              />
-            </div>
+              <div className="col-span-8 col-start-5 min-w-0 sm:col-span-5 sm:col-start-auto">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 truncate">
+                    <Video className="w-4 h-4 text-indigo-600" />
+                    HR camera
+                  </span>
+                </div>
 
-            {/* Tile B: HR Interviewer Camera (Self-Preview & Broadcast) */}
-            <div className="pt-2 border-t border-slate-100">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Video className="w-4 h-4 text-indigo-600" />
-                  HR Interviewer Camera
-                </span>
-                <span className="text-[10px] text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                  Broadcasting
-                </span>
+                <HRCameraTile
+                  mode="hr"
+                  interviewerName="Lead Technical Recruiter"
+                  interviewerRole="TrustHire Evaluation Panel"
+                />
               </div>
-
-              <HRCameraTile
-                mode="hr"
-                interviewerName="Lead Technical Recruiter"
-                interviewerRole="TrustHire Evaluation Panel"
-              />
             </div>
 
             {/* Proctoring Telemetry Summary & Test Triggers */}
@@ -713,12 +742,12 @@ export default function HRInterviewMonitorPage() {
           {/* Card 2: HR Copilot & Question Generator Tools */}
           <Card className="shadow-xs border-slate-200 overflow-hidden">
             {/* Copilot Navigation Tabs */}
-            <div className="flex border-b border-slate-200 bg-slate-50/70 overflow-x-auto">
+            <div className="grid grid-cols-3 border-b border-slate-200 bg-slate-50/70 sm:flex sm:overflow-x-auto">
               {COPILOT_TABS.map(({ id, label, Icon }) => (
                 <button
                   key={id}
                   onClick={() => setCopilotTab(id)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-3 text-xs font-medium whitespace-nowrap border-b-2 transition-all ${
+                  className={`min-w-0 flex items-center justify-center gap-1 px-1.5 py-3 text-[10px] font-medium whitespace-nowrap border-b-2 transition-all sm:flex-1 sm:gap-1.5 sm:px-3 sm:text-xs ${
                     copilotTab === id
                       ? 'border-indigo-600 text-indigo-700 bg-white font-semibold'
                       : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -759,38 +788,6 @@ export default function HRInterviewMonitorPage() {
                 </div>
               )}
 
-              {/* 2. AI Question Assistant */}
-              {copilotTab === 'questions' && (
-                <div className="space-y-3">
-                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide block pb-1 border-b border-slate-100">
-                    AI Question Bank (Gemma / LLM)
-                  </span>
-                  <AIQuestionAssistant
-                    suggestions={questionSuggestions}
-                    loading={isGeneratingQuestion}
-                    error={questionError}
-                    onGenerate={generateGemmaQuestion}
-                    onSelectQuestion={(q) => handleDispatchQuestion(q)}
-                  />
-                  <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-700">Question order</span>
-                      <span className="text-[10px] text-slate-500">Reorder, then dispatch any item</span>
-                    </div>
-                    {questionQueue.map((item, index) => (
-                      <div key={item.question_id || `${item.question}-${index}`} className="flex items-center gap-1.5 rounded-lg border border-slate-100 p-2">
-                        <span className="w-5 shrink-0 text-[10px] text-slate-400">{index + 1}</span>
-                        <span className="min-w-0 flex-1 text-xs text-slate-700">{item.question}</span>
-                        <button aria-label="Move question up" disabled={index === 0} onClick={() => moveQueuedQuestion(index, -1)} className="rounded px-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30">↑</button>
-                        <button aria-label="Move question down" disabled={index === questionQueue.length - 1} onClick={() => moveQueuedQuestion(index, 1)} className="rounded px-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30">↓</button>
-                        <button disabled={isDispatchingQuestion} onClick={() => handleDispatchQuestion(item.question, item.category, item.question_id)} className="shrink-0 rounded bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700 disabled:opacity-50">Ask now</button>
-                      </div>
-                    ))}
-                    {questionError && <p role="alert" className="text-xs text-rose-700">{questionError}</p>}
-                  </div>
-                </div>
-              )}
-
               {/* 3. Document Consistency & Verification Red Flags */}
               {copilotTab === 'documents' && (
                 <div className="space-y-3">
@@ -822,8 +819,41 @@ export default function HRInterviewMonitorPage() {
           </Card>
         </div>
 
-        {/* ── RIGHT COLUMN: Active Q&A, Voice Transcription & AI Content Detection (7 cols) ── */}
-        <div className="lg:col-span-7 space-y-5">
+        {/* ── RIGHT COLUMN: Question generation and live candidate Q&A ── */}
+        <div className="lg:col-span-6 space-y-5">
+          <Card className="p-4 shadow-xs border-slate-200 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Question workspace</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Generate, reorder, and send questions during the interview.</p>
+              </div>
+              <Sparkles className="h-4 w-4 shrink-0 text-indigo-600" />
+            </div>
+            <AIQuestionAssistant
+              suggestions={questionSuggestions}
+              loading={isGeneratingQuestion}
+              error={questionError}
+              onGenerate={generateGemmaQuestion}
+              onSelectQuestion={(q) => handleDispatchQuestion(q)}
+            />
+            {questionQueue.length > 0 && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-700">Question order</span>
+                  <span className="text-[10px] text-slate-500">Reorder or ask now</span>
+                </div>
+                {questionQueue.map((item, index) => (
+                  <div key={item.question_id || `${item.question}-${index}`} className="flex items-center gap-1.5 rounded-lg border border-slate-100 bg-white p-2">
+                    <span className="w-5 shrink-0 text-[10px] text-slate-400">{index + 1}</span>
+                    <span className="min-w-0 flex-1 text-xs text-slate-700">{item.question}</span>
+                    <button aria-label="Move question up" disabled={index === 0} onClick={() => moveQueuedQuestion(index, -1)} className="rounded px-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30">↑</button>
+                    <button aria-label="Move question down" disabled={index === questionQueue.length - 1} onClick={() => moveQueuedQuestion(index, 1)} className="rounded px-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30">↓</button>
+                    <button disabled={isDispatchingQuestion} onClick={() => handleDispatchQuestion(item.question, item.category, item.question_id)} className="shrink-0 rounded bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700 disabled:opacity-50">Ask now</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
           {/* Active Question Dispatched to Candidate */}
           <div>
             <div className="flex items-center justify-between mb-2">
