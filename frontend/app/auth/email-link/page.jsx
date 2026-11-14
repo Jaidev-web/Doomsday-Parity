@@ -28,8 +28,8 @@ function EmailLinkCallbackContent() {
     }
 
     mongoAuth.consumeSignInLink({ token, role })
-      .then(({ user }) => {
-        storeAppSession(role, user);
+      .then((session) => {
+        storeAppSession(role, { ...(session?.user || session), access_token: session?.access_token });
         const pendingInterviewId = window.localStorage.getItem('pending_interview_id');
         if (role === 'candidate' && pendingInterviewId) {
           window.localStorage.removeItem('pending_interview_id');
@@ -68,7 +68,10 @@ export default function EmailLinkCallbackPage() {
     <Suspense
       fallback={
         <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-          <p className="text-sm text-slate-500">Loading sign-in verification…</p>
+          <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-md">
+            <h1 className="text-xl font-bold text-slate-900">Finish signing in</h1>
+            <p className="mt-3 text-sm text-slate-500">Loading sign-in verification…</p>
+          </section>
         </main>
       }
     >

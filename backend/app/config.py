@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     MONGODB_URI: Optional[str] = None
     MONGODB_DATABASE: str = "trusthire"
     FRONTEND_ORIGINS: str = "http://localhost:3000"
+    AUTH_SESSION_SECRET: Optional[str] = None
 
     # Resolve the backend config from this file, not the shell's working
     # directory. This keeps `backend/.env` active when Uvicorn is launched
