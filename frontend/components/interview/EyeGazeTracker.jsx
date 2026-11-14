@@ -53,7 +53,8 @@ export default function EyeGazeTracker({ stream, sessionId, onStatus }) {
   const videoRef = useRef(null);
 
   useEffect(() => {
-    if (!stream || !sessionId) return undefined;
+    const videoElement = videoRef.current;
+    if (!stream || !sessionId || !videoElement) return undefined;
 
     let disposed = false;
     let timer = null;
@@ -62,6 +63,7 @@ export default function EyeGazeTracker({ stream, sessionId, onStatus }) {
     let pendingStatus = null;
     let stableCount = 0;
     let lastSentAt = 0;
+    let lastInferenceError = null;
 
     const publish = async (isLooking, faceDetected) => {
       const now = Date.now();
@@ -94,29 +96,44 @@ export default function EyeGazeTracker({ stream, sessionId, onStatus }) {
           minFacePresenceConfidence: 0.55,
           minTrackingConfidence: 0.55,
         });
-        if (disposed || !videoRef.current) return;
+        if (disposed) return;
 
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        videoElement.srcObject = stream;
+        await videoElement.play();
 
         const sample = () => {
-          if (disposed || !videoRef.current) return;
-          const video = videoRef.current;
-          if (video.readyState >= 2) {
-            const result = landmarker.detectForVideo(video, performance.now());
-            const landmarks = result.faceLandmarks?.[0];
-            const faceDetected = Boolean(landmarks);
-            const observed = faceDetected && isLookingAtScreen(landmarks);
-            if (observed === pendingStatus) stableCount += 1;
-            else {
-              pendingStatus = observed;
-              stableCount = 1;
-            }
+          if (disposed) return;
+          const video = videoElement;
+          if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+            try {
+              const result = landmarker.detectForVideo(video, performance.now());
+              lastInferenceError = null;
+              const landmarks = result.faceLandmarks?.[0];
+              const faceDetected = Boolean(landmarks);
+              const observed = faceDetected && isLookingAtScreen(landmarks);
+              if (observed === pendingStatus) stableCount += 1;
+              else {
+                pendingStatus = observed;
+                stableCount = 1;
+              }
 
-            if (stableCount >= STABLE_SAMPLES_REQUIRED && (
-              (observed ? 'high' : 'low') !== lastSentStatus || Date.now() - lastSentAt >= STATUS_HEARTBEAT_MS
-            )) {
-              publish(observed, faceDetected);
+              if (stableCount >= STABLE_SAMPLES_REQUIRED && (
+                (observed ? 'high' : 'low') !== lastSentStatus || Date.now() - lastSentAt >= STATUS_HEARTBEAT_MS
+              )) {
+                publish(observed, faceDetected);
+              }
+            } catch (error) {
+              // Recover from a transient frame/model failure without stopping the
+              // candidate camera or permanently disabling gaze sampling.
+              if (!disposed && lastInferenceError !== error.message) {
+                lastInferenceError = error.message;
+                onStatus?.({ status: 'error', message: error.message || 'Eye tracking is temporarily unavailable.' });
+              }
+              pendingStatus = null;
+              stableCount = 0;
+              lastSentStatus = null;
+              timer = setTimeout(sample, 1000);
+              return;
             }
           }
           timer = setTimeout(sample, SAMPLE_INTERVAL_MS);
@@ -132,7 +149,7 @@ export default function EyeGazeTracker({ stream, sessionId, onStatus }) {
       disposed = true;
       if (timer) clearTimeout(timer);
       landmarker?.close();
-      if (videoRef.current) videoRef.current.srcObject = null;
+      videoElement.srcObject = null;
     };
   }, [stream, sessionId, onStatus]);
 

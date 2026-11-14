@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { api } from '@/lib/api';
 import { getInterviewSession, submitInterviewAnswer, uploadAudioForTranscription } from '@/lib/interview/api';
+import { getCameraAccessError, getInterviewMediaConstraints } from '@/lib/interview/media';
 import EyeGazeTracker from '@/components/interview/EyeGazeTracker';
 
 // Interview components
@@ -51,6 +52,7 @@ export default function CandidateInterviewPage() {
   // ── Permission & Session Phase ────────────────────────────────────────────
   const [phase, setPhase] = useState('entry'); // entry|validating|consent|requesting|active|denied|submitted|invalid
   const [permError, setPermError] = useState('');
+  const [mediaWarning, setMediaWarning] = useState('');
   const [invitationInput, setInvitationInput] = useState('');
 
   // ── Media ──────────────────────────────────────────────────────────────────
@@ -78,6 +80,7 @@ export default function CandidateInterviewPage() {
   const [sessionEndedByRecruiter, setSessionEndedByRecruiter] = useState(false);
 
   const mediaRecorderRef = useRef(null);
+  const recordingMicStreamRef = useRef(null);
   const recordingQuestionRef = useRef(null);
   const lastQuestionVersionRef = useRef(0);
   const chunksRef = useRef([]);
@@ -103,6 +106,8 @@ export default function CandidateInterviewPage() {
     }
     clearInterval(recTimerRef.current);
     clearInterval(sessionTimerRef.current);
+    recordingMicStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingMicStreamRef.current = null;
     mediaStream?.getTracks().forEach((track) => track.stop());
     if (videoRef.current) videoRef.current.srcObject = null;
     setMediaStream(null);
@@ -292,11 +297,22 @@ export default function CandidateInterviewPage() {
     }
     setPhase('requesting');
     setPermError('');
+    setMediaWarning('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+      if (typeof window === 'undefined' || !window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Secure context required');
+      }
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(getInterviewMediaConstraints());
+      } catch (mediaErr) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(getInterviewMediaConstraints({ audio: false }));
+          setMediaWarning(`Camera is active. Microphone access will be requested when you start recording. ${getCameraAccessError(mediaErr, 'microphone')}`);
+        } catch (cameraErr) {
+          throw cameraErr;
+        }
+      }
       if (sessionClosedRef.current) {
         stream.getTracks().forEach((track) => track.stop());
         return;
@@ -305,12 +321,7 @@ export default function CandidateInterviewPage() {
       setPhase('active');
     } catch (err) {
       if (sessionClosedRef.current) return;
-      const denied = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
-      setPermError(
-        denied
-          ? 'Camera or microphone was denied. Please allow permissions in your browser settings and try again.'
-          : `Could not access media devices: ${err.message}`
-      );
+      setPermError(getCameraAccessError(err, 'camera'));
       setPhase('denied');
     }
   };
@@ -349,12 +360,18 @@ export default function CandidateInterviewPage() {
 
     try {
       let stream = mediaStream;
+      let ownsStream = false;
       if (!stream) {
         setRecState(REC.REQUESTING);
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        ownsStream = true;
       }
 
-      const audioTracks = stream.getAudioTracks();
+      let audioTracks = stream.getAudioTracks();
+      if (audioTracks.length === 0) {
+        recordingMicStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioTracks = recordingMicStreamRef.current.getAudioTracks();
+      }
       if (audioTracks.length === 0) throw new Error('No microphone audio track is available.');
       // The shared interview stream also contains the camera track. Keep that
       // stream alive for gaze tracking, but give MediaRecorder audio only.
@@ -369,11 +386,15 @@ export default function CandidateInterviewPage() {
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = async () => {
         if (sessionClosedRef.current) {
-          if (!mediaStream) stream.getTracks().forEach((track) => track.stop());
+          if (ownsStream) stream.getTracks().forEach((track) => track.stop());
+          recordingMicStreamRef.current?.getTracks().forEach((track) => track.stop());
+          recordingMicStreamRef.current = null;
           return;
         }
         await processAudio();
-        if (!mediaStream) stream.getTracks().forEach((track) => track.stop());
+        if (ownsStream) stream.getTracks().forEach((track) => track.stop());
+        recordingMicStreamRef.current?.getTracks().forEach((track) => track.stop());
+        recordingMicStreamRef.current = null;
       };
       mr.start(250);
       mediaRecorderRef.current = mr;
@@ -382,8 +403,9 @@ export default function CandidateInterviewPage() {
       recTimerRef.current = setInterval(() => setRecTimer((t) => t + 1), 1000);
       setRecState(REC.RECORDING);
     } catch (err) {
-      const denied = err.name === 'NotAllowedError';
-      setRecError(denied ? 'Microphone access denied.' : `Recording error: ${err.message}`);
+      recordingMicStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordingMicStreamRef.current = null;
+      setRecError(getCameraAccessError(err, 'microphone'));
       setRecState(REC.ERROR);
     }
   }, [activeQuestion, mediaStream, processAudio]);
@@ -651,6 +673,8 @@ export default function CandidateInterviewPage() {
       </div>
 
       <EyeGazeTracker stream={mediaStream} sessionId={session?.session_id || session?.id} onStatus={handleGazeStatus} />
+
+      {mediaWarning && <div role="status" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><p>{mediaWarning}</p></div>}
 
       {/* Tab-switch warning notice (Visible to candidate) */}
       {tabWarning && (

@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  allowedDevOrigins: ['10.21.51.15'],
+  allowedDevOrigins: ['10.165.96.141'],
   serverExternalPackages: ['mongodb', 'nodemailer'],
   experimental: {
     cpus: 1,

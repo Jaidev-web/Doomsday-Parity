@@ -7,7 +7,7 @@ import {
   ArrowLeft, Video, VideoOff, Mic, MicOff, Shield, AlertTriangle,
   CheckCircle2, Clock, Play, Square, ChevronRight, Clipboard, Eye,
   MessageSquare, FileText, Camera, Sparkles, Loader2, XCircle,
-  Monitor, MonitorOff, ExternalLink, Flag, Send, RefreshCw, ThumbsUp,
+  Monitor, MonitorOff, Flag, Send, RefreshCw, ThumbsUp,
   UserCheck, ShieldAlert,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { api } from '@/lib/api';
 import { DEMO_CANDIDATES } from '@/lib/constants';
+import { getCameraAccessError, getInterviewMediaConstraints } from '@/lib/interview/media';
 
 // Interview-specific components
 import InterviewHeader from '@/components/interview/InterviewHeader';
@@ -43,7 +44,6 @@ const COPILOT_TABS = [
   { id: 'resume',     label: 'Resume Scanner', Icon: FileText },
   { id: 'questions',  label: 'AI Questions',   Icon: Sparkles },
   { id: 'documents',  label: 'Discrepancies',  Icon: Clipboard },
-  { id: 'integrity',  label: 'Integrity Logs', Icon: Shield },
 ];
 
 export default function HRInterviewMonitorPage() {
@@ -228,7 +228,7 @@ export default function HRInterviewMonitorPage() {
           eventType: event.event_type,
           severity: event.event_type === 'ai_response_suspected'
             ? 'high'
-            : event.event_type === 'tab_switch' || event.event_type === 'large_paste'
+            : event.event_type === 'tab_switch' || event.event_type === 'large_paste' || event.event_type === 'gaze_lookaway'
             ? 'high'
             : event.event_type === 'typing_detected'
               ? 'medium'
@@ -302,7 +302,27 @@ export default function HRInterviewMonitorPage() {
     setCameraError(null);
     setLaunchError('');
 
+    let capturedStream = null;
     try {
+      // Ask for camera access directly from the launch click before network calls.
+      // Some browsers (notably Safari on mobile) can lose the permission gesture
+      // if session creation is awaited first.
+      if (typeof window === 'undefined' || !window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        setCameraError(getCameraAccessError(new Error('Secure context required')));
+      } else {
+        try {
+          capturedStream = await navigator.mediaDevices.getUserMedia(getInterviewMediaConstraints());
+        } catch (mediaErr) {
+          try {
+            capturedStream = await navigator.mediaDevices.getUserMedia(getInterviewMediaConstraints({ audio: false }));
+            setCameraError(`Camera is ready, but the microphone could not start. ${getCameraAccessError(mediaErr, 'microphone')}`);
+          } catch (cameraErr) {
+            setCameraError(getCameraAccessError(cameraErr, 'camera'));
+          }
+        }
+        if (capturedStream) setMediaStream(capturedStream);
+      }
+
       const session = await createInterviewSession(candidateId);
       const backendSessionId = session.session_id || session.id;
       if (!backendSessionId) throw new Error('The backend did not return an interview session ID.');
@@ -319,31 +339,6 @@ export default function HRInterviewMonitorPage() {
         lastQuestionVersionRef.current = initialSession.current_question.version || 1;
       }
 
-      let stream = null;
-      if (navigator?.mediaDevices?.getUserMedia) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-            audio: { echoCancellation: true, noiseSuppression: true },
-          });
-          setMediaStream(stream);
-        } catch (mediaErr) {
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-              audio: false,
-            });
-            setMediaStream(stream);
-            setCameraError('Interviewer microphone is unavailable; candidates will not hear HR until microphone access is allowed.');
-          } catch {
-            console.warn('Interviewer camera and microphone are unavailable:', mediaErr);
-            setCameraError('Interviewer camera and microphone are unavailable. The candidate can still join and integrity monitoring will continue.');
-          }
-        }
-      } else {
-        setCameraError('Camera access requires localhost or a secure HTTPS connection. The candidate can still join, but video calling will be unavailable.');
-      }
-
       recordIntegrityEvent(backendSessionId, {
         eventType: 'monitor_launched',
         severity: 'low',
@@ -353,10 +348,31 @@ export default function HRInterviewMonitorPage() {
 
       setIsMonitorLaunched(true);
     } catch (err) {
-      console.error('Launch monitor error:', err);
+      capturedStream?.getTracks().forEach((track) => track.stop());
+      setMediaStream(null);
       setLaunchError(err.message || 'Could not create the interview session. Please try again.');
     } finally {
       setIsLaunching(false);
+    }
+  };
+
+  const retryCameraAccess = async () => {
+    setCameraError(null);
+    try {
+      if (typeof window === 'undefined' || !window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Secure context required');
+      }
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(getInterviewMediaConstraints());
+      } catch (mediaErr) {
+        stream = await navigator.mediaDevices.getUserMedia(getInterviewMediaConstraints({ audio: false }));
+        setCameraError(`Camera is ready, but the microphone could not start. ${getCameraAccessError(mediaErr, 'microphone')}`);
+      }
+      mediaStream?.getTracks().forEach((track) => track.stop());
+      setMediaStream(stream);
+    } catch (error) {
+      setCameraError(getCameraAccessError(error, 'camera'));
     }
   };
 
@@ -677,13 +693,6 @@ export default function HRInterviewMonitorPage() {
                   <Video className="w-4 h-4 text-indigo-600" />
                   Candidate Interview Room
                 </span>
-                <Link
-                  href={invitationUrl || '/candidate/interview'}
-                  target="_blank"
-                  className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline font-semibold"
-                >
-                  Open Candidate Portal <ExternalLink className="w-3 h-3" />
-                </Link>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
                 The candidate joins through the invitation URL for backend session <code className="bg-white px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-700 font-mono text-[11px]">{sessionId || 'created when launched'}</code>.
@@ -709,10 +718,10 @@ export default function HRInterviewMonitorPage() {
   // RENDER: Active HR Interview Monitor
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="mx-auto flex h-[calc(100dvh-8rem)] w-full max-w-[1600px] min-h-[620px] flex-col gap-[13px] overflow-hidden">
+    <div className="mx-auto flex min-h-[calc(100dvh-8rem)] w-full max-w-[1600px] flex-col gap-3 xl:h-[calc(100dvh-8rem)] xl:min-h-[600px] xl:overflow-hidden">
       <div className="sticky top-0 z-30 flex shrink-0 flex-wrap items-center justify-between gap-[13px] rounded-xl border border-slate-200 bg-white px-[21px] py-[13px] shadow-xs">
         <div className="flex items-center gap-[13px]">
-          <Link href={`/dashboard/candidates/${candidateId}`} className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Back to candidate">
+          <Link href="/dashboard/interviews" className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Back to interviews">
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
@@ -739,17 +748,16 @@ export default function HRInterviewMonitorPage() {
           <Button variant="secondary" size="sm" onClick={copyInvitation} icon={Clipboard} className="min-h-11">
             {inviteCopied ? 'Link copied' : 'Share candidate link'}
           </Button>
-          <Link href={invitationUrl || '/candidate/interview'} target="_blank" className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">Candidate Room <ExternalLink className="h-3.5 w-3.5" /></Link>
           <Button variant="danger" size="sm" onClick={() => setShowEndModal(true)} className="min-h-11">End Session</Button>
         </div>
       </div>
       {(inviteCopyError || invitationUrl) && <div className="shrink-0 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
         {inviteCopyError ? <p role="alert">{inviteCopyError}</p> : <label className="flex flex-wrap items-center gap-2"><span className="font-semibold">Candidate link</span><input readOnly value={invitationUrl} className="min-w-0 flex-1 rounded-md border border-indigo-200 bg-white px-2 py-1 font-mono text-[11px] text-slate-700" /></label>}
       </div>}
-      {cameraError && <p role="status" className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{cameraError}</p>}
+      {cameraError && <div role="status" className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"><span className="min-w-0 flex-1">{cameraError}</span>{!mediaStream?.getVideoTracks().some((track) => track.readyState === 'live') && <Button size="sm" variant="secondary" onClick={retryCameraAccess} className="min-h-11 shrink-0">Retry camera access</Button>}</div>}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-[21px] overflow-y-auto lg:grid-cols-[1.618fr_1fr] lg:overflow-hidden">
-        <section className="flex min-h-0 flex-col gap-[13px]" aria-label="Candidate Monitor">
+      <div className="grid min-h-[420px] flex-1 grid-cols-1 gap-4 overflow-y-auto xl:min-h-0 xl:grid-cols-[1.618fr_1fr] xl:overflow-hidden">
+        <section className="flex min-h-0 flex-col gap-3 overflow-y-auto" aria-label="Candidate Monitor">
           <div className="relative shrink-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-md">
             <CameraMonitorPanel
               active={isMonitorLaunched}
@@ -804,7 +812,7 @@ export default function HRInterviewMonitorPage() {
           <div className="flex shrink-0 overflow-x-auto border-b border-slate-200 bg-slate-50/80" role="tablist" aria-label="Interview tools">
             {COPILOT_TABS.map(({ id, label, Icon }) => (
               <button key={id} type="button" role="tab" aria-selected={copilotTab === id} onClick={() => setCopilotTab(id)} className={`flex min-h-12 shrink-0 items-center justify-center gap-2 border-b-2 px-[13px] text-xs font-semibold transition-colors ${copilotTab === id ? 'border-indigo-600 bg-white text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
-                <Icon className="h-4 w-4" /><span>{label}</span>{id === 'integrity' && integrityEvents.length > 0 && <span className="rounded-full bg-slate-200 px-1.5 text-[10px]">{integrityEvents.length}</span>}
+                <Icon className="h-4 w-4" /><span>{label}</span>
               </button>
             ))}
           </div>
@@ -854,7 +862,6 @@ export default function HRInterviewMonitorPage() {
 
             {copilotTab === 'documents' && <div className="space-y-3"><span className="block border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wide text-slate-700">Document Discrepancy Cross-Check</span><DocumentConsistencyPanel candidateId={candidateId} /></div>}
 
-            {copilotTab === 'integrity' && <div className="space-y-3"><span className="block border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wide text-slate-700">Live Integrity Logs</span><IntegrityMonitorPanel events={integrityEvents} tabSwitches={tabSwitches} typingDetections={typingDetections} gazeLookaways={gazeAwayCount} answerIntegrityScore={answerIntegrityScore} answersAnalyzed={answersAnalyzed} answersPending={answersPending} answersSubmitted={answersSubmitted} integrityScore={integrityScore} focusLosses={focusLosses} pasteEvents={pasteEvents} screenSharing={screenSharing} sessionActive={isMonitorLaunched} /></div>}
           </div>
 
           <div className="sticky bottom-0 z-10 shrink-0 border-t border-slate-200 bg-white p-[13px] shadow-[0_-8px_20px_rgba(15,23,42,0.06)]">
@@ -871,6 +878,24 @@ export default function HRInterviewMonitorPage() {
           </div>
         </section>
       </div>
+
+      <section className="h-[clamp(160px,20vh,210px)] shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-xs sm:p-4" aria-label="Integrity logs">
+        <IntegrityMonitorPanel
+          events={integrityEvents}
+          tabSwitches={tabSwitches}
+          typingDetections={typingDetections}
+          gazeLookaways={gazeAwayCount}
+          answerIntegrityScore={answerIntegrityScore}
+          answersAnalyzed={answersAnalyzed}
+          answersPending={answersPending}
+          answersSubmitted={answersSubmitted}
+          integrityScore={integrityScore}
+          focusLosses={focusLosses}
+          pasteEvents={pasteEvents}
+          screenSharing={screenSharing}
+          sessionActive={isMonitorLaunched}
+        />
+      </section>
 
       {/* End Session Confirmation Modal */}
       {showEndModal && (

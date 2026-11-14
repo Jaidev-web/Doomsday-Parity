@@ -146,7 +146,16 @@ if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
 
 var out = console.log.bind(console);
 
-var err = console.error.bind(console);
+// MediaPipe's native runtime writes this normal delegate startup notice to
+// stderr. Next dev treats console.error as a fatal overlay, so route this one
+// informational line to console.info while preserving real runtime errors.
+var err = function(...args) {
+  if (args.length === 1 && typeof args[0] === "string" && args[0].startsWith("INFO: Created TensorFlow Lite XNNPACK delegate for CPU.")) {
+    console.info(...args);
+    return;
+  }
+  console.error.apply(console, args);
+};
 
 // end include: shell.js
 // include: preamble.js

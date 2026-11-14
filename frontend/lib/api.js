@@ -1,6 +1,15 @@
 import { DEMO_CANDIDATES, DEMO_VERIFICATIONS, DEMO_ACTIVITIES } from './constants';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_HEALTH_URL = `${API_BASE.replace(/\/$/, '')}/health`;
+
+function explainNetworkFailure(error) {
+  if (!(error instanceof TypeError)) return error;
+  return new Error(
+    `Cannot reach the TrustHire API. On this device, open ${API_HEALTH_URL}. ` +
+    'If the browser shows a certificate warning, install trusthire-lan-ca.crt on this device and reload the app.',
+  );
+}
 
 async function safeFetch(endpoint, options = {}) {
   const { throwOnError = false, ...fetchOptions } = options;
@@ -30,7 +39,7 @@ async function safeFetch(endpoint, options = {}) {
     }
     return await res.json();
   } catch (err) {
-    if (throwOnError) throw err;
+    if (throwOnError) throw explainNetworkFailure(err);
     console.warn(`API call failed to ${endpoint}, using fallback:`, err.message);
     return null;
   }
@@ -67,10 +76,15 @@ export const api = {
   },
   documents: {
     upload: async (candidateId, formData) => {
-      const res = await fetch(`${API_BASE}/api/candidates/${candidateId}/documents`, {
-        method: 'POST',
-        body: formData,
-      });
+      let res;
+      try {
+        res = await fetch(`${API_BASE}/api/candidates/${candidateId}/documents`, {
+          method: 'POST',
+          body: formData,
+        });
+      } catch (error) {
+        throw explainNetworkFailure(error);
+      }
       if (!res.ok) {
         let detail = `Document upload failed (${res.status})`;
         try {

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Video, ExternalLink } from 'lucide-react';
+import { Video } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -50,9 +50,6 @@ export default function InterviewsPage() {
                   <Button type="button" className="w-full" icon={Video}>
                     Open HR Monitor
                   </Button>
-                </Link>
-                <Link href={`/dashboard/candidates/${candidate.id}`} className="flex items-center justify-center gap-1 text-[11px] text-slate-500 hover:text-slate-800">
-                  View candidate profile <ExternalLink className="w-3 h-3" />
                 </Link>
               </div>
             </Card>

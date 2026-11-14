@@ -19,10 +19,21 @@ async function interviewFetch(endpoint, options = {}) {
 }
 
 async function strictInterviewFetch(endpoint, options = {}) {
-  const res = await fetch(`${INTERVIEW_API_BASE}${endpoint}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  });
+  let res;
+  try {
+    res = await fetch(`${INTERVIEW_API_BASE}${endpoint}`, {
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      ...options,
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      const healthUrl = `${INTERVIEW_API_BASE.replace(/\/$/, '')}/health`;
+      throw new Error(
+        `Cannot reach the interview backend at ${INTERVIEW_API_BASE}. Confirm it is running with HTTPS and listening on 0.0.0.0:8000, then open ${healthUrl} on this device. If Firefox shows a certificate warning, trust the LAN CA and reload.`,
+      );
+    }
+    throw error;
+  }
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
     try {
@@ -170,7 +181,12 @@ export async function uploadAudioForTranscription(sessionId, audioBlob, question
     }
     return await res.json();
   } catch (err) {
-    console.error('[InterviewAPI] Audio upload failed:', err.message);
+    if (err instanceof TypeError) {
+      const healthUrl = `${INTERVIEW_API_BASE.replace(/\/$/, '')}/health`;
+      throw new Error(
+        `Audio upload could not reach the interview backend. Check ${healthUrl} on this device and trust the LAN certificate if the browser prompts.`,
+      );
+    }
     throw err;
   }
 }

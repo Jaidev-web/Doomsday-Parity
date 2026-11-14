@@ -1,7 +1,19 @@
 'use client';
 
-import { useState } from 'react';
-import { ShieldAlert, Wifi, Monitor, Eye, AlertTriangle, Clock, CheckCircle2, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, Eye, Monitor, ShieldAlert, XCircle } from 'lucide-react';
+
+const riskConfig = {
+  clean: { label: 'Integrity healthy', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', Icon: CheckCircle2 },
+  warning: { label: 'Review signals', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', Icon: AlertTriangle },
+  critical: { label: 'Critical signals', color: 'text-rose-700', bg: 'bg-rose-50 border-rose-200', Icon: XCircle },
+};
+
+const severityColor = {
+  low: 'bg-slate-100 text-slate-600',
+  medium: 'bg-amber-100 text-amber-700',
+  high: 'bg-rose-100 text-rose-700',
+  critical: 'bg-rose-200 text-rose-800',
+};
 
 export default function IntegrityMonitorPanel({
   events,
@@ -18,115 +30,100 @@ export default function IntegrityMonitorPanel({
   screenSharing,
   sessionActive,
 }) {
-  const [expanded, setExpanded] = useState(true);
-
   const overallRisk = integrityScore < 50 ? 'critical' : integrityScore < 80 ? 'warning' : 'clean';
-
-  const riskConfig = {
-    clean:    { label: 'Clean',    color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', Icon: CheckCircle2 },
-    warning:  { label: 'Warning',  color: 'text-amber-700',   bg: 'bg-amber-50 border-amber-200',    Icon: AlertTriangle },
-    critical: { label: 'Critical', color: 'text-rose-700',    bg: 'bg-rose-50 border-rose-200',      Icon: XCircle },
-  };
   const rc = riskConfig[overallRisk];
-
-  const severityColor = {
-    low:      'bg-slate-100 text-slate-600',
-    medium:   'bg-amber-100 text-amber-700',
-    high:     'bg-rose-100 text-rose-700',
-    critical: 'bg-rose-200 text-rose-800',
-  };
+  const eventList = events || [];
+  const stats = [
+    { label: 'Eye look-aways', value: gazeLookaways, warn: 2, crit: 5, Icon: Eye },
+    { label: 'Tab switches', value: tabSwitches, warn: 3, crit: 7, Icon: Monitor },
+    { label: 'Typing bursts', value: typingDetections, warn: 1, crit: 5 },
+    { label: 'Focus losses', value: focusLosses, warn: 2, crit: 5 },
+    { label: 'Paste events', value: pasteEvents, warn: 2, crit: 5 },
+    { label: 'Screen share', value: screenSharing ? 'On' : 'Off', active: screenSharing },
+    {
+      label: 'Answer signal',
+      value: answerIntegrityScore == null
+        ? answersPending ? 'Analyzing' : answersSubmitted ? 'Pending' : 'No answers'
+        : `${Math.round(answerIntegrityScore)}%`,
+      detail: answersAnalyzed ? `${answersAnalyzed} analyzed` : 'AI style signal',
+    },
+  ];
 
   return (
-    <div className="space-y-3">
-      {/* Overall risk */}
-      <div className={`flex items-center justify-between p-3 rounded-lg border ${rc.bg}`}>
-        <div className="flex items-center gap-2">
-          <rc.Icon className={`w-4 h-4 ${rc.color}`} />
-          <span className={`text-sm font-semibold ${rc.color}`}>Integrity: {rc.label}</span>
-        </div>
-          <span className={`text-xs font-medium ${rc.color}`}>{integrityScore}% · {events?.length || 0} event{events?.length !== 1 ? 's' : ''}</span>
-      </div>
-      <p className="text-[10px] leading-relaxed text-slate-500">
-        Total blends browser monitoring (75%) with conclusive answer style analysis (25%). Before an answer is analyzed, the score uses browser monitoring only.
-      </p>
-
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-2">
-        {[
-          { label: 'Eye look-aways', value: gazeLookaways, warn: 2, crit: 5 },
-          { label: 'Tab switches', value: tabSwitches, warn: 3, crit: 7 },
-          { label: 'Typing bursts', value: typingDetections, warn: 1, crit: 5 },
-          { label: 'Focus losses', value: focusLosses, warn: 2, crit: 5 },
-          { label: 'Paste events', value: pasteEvents, warn: 2, crit: 5 },
-        ].map(({ label, value, warn, crit }) => (
-          <div key={label} className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-            <p className="text-xs text-slate-500">{label}</p>
-            <p className={`text-lg font-bold mt-0.5 ${value >= crit ? 'text-rose-600' : value >= warn ? 'text-amber-600' : 'text-slate-700'}`}>
-              {value || 0}
+    <div className="flex h-full min-h-0 flex-col gap-2.5">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${rc.bg}`}>
+            <rc.Icon className={`h-4 w-4 ${rc.color}`} />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold leading-tight text-slate-900">Integrity activity</h2>
+            <p className="truncate text-[10px] leading-tight text-slate-500">
+              {sessionActive ? 'Live monitoring · browser signals and answer analysis' : 'Monitoring begins when the interview starts'}
             </p>
           </div>
-        ))}
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-          <p className="text-xs text-slate-500">Screen share</p>
-          <p className={`text-sm font-semibold mt-0.5 ${screenSharing ? 'text-indigo-600' : 'text-slate-400'}`}>
-            {screenSharing ? 'Active' : 'Off'}
-          </p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-          <p className="text-xs text-slate-500">Answer integrity signal</p>
-          <p className="mt-0.5 text-lg font-bold text-slate-700">
-            {answerIntegrityScore == null
-              ? answersPending ? 'Analyzing…' : answersSubmitted ? 'No conclusive result' : 'No answers yet'
-              : `${Math.round(answerIntegrityScore)}%`}
-          </p>
-          <p className="text-[10px] leading-relaxed text-slate-400">
-            {answersAnalyzed ? `Based on ${answersAnalyzed} analyzed answer${answersAnalyzed === 1 ? '' : 's'}` : 'Needs a conclusive answer analysis'} · AI style signal, not proof of authorship
-          </p>
+        <div className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${rc.bg} ${rc.color}`}>
+          <span>{rc.label}</span>
+          <span className="h-1 w-1 rounded-full bg-current opacity-50" />
+          <span>{integrityScore}%</span>
         </div>
       </div>
 
-      {/* Event log */}
-      <div>
-        <button
-          onClick={() => setExpanded((e) => !e)}
-          className="flex items-center justify-between w-full text-xs text-slate-500 font-medium uppercase tracking-wide mb-2"
-        >
-          <span>Event log ({events?.length || 0})</span>
-          <span>{expanded ? '▾' : '▸'}</span>
-        </button>
+      <div className="grid shrink-0 grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-7">
+        {stats.map(({ label, value, warn, crit, active, detail, Icon }) => {
+          const numeric = typeof value === 'number' ? value : null;
+          const valueColor = numeric == null
+            ? active ? 'text-indigo-700' : label === 'Screen share' ? 'text-slate-400' : 'text-slate-700'
+            : numeric >= crit ? 'text-rose-600' : numeric >= warn ? 'text-amber-600' : 'text-slate-800';
 
-        {expanded && (
-          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-            {(!events || events.length === 0) && (
-              <div className="text-center py-6 text-slate-400 text-xs">
-                <ShieldAlert className="w-6 h-6 mx-auto mb-1 opacity-30" />
-                No integrity events recorded
-              </div>
-            )}
-            {events?.map((ev, i) => (
-              <div key={i} className="flex items-start gap-2 bg-white border border-slate-100 rounded-lg p-2.5">
-                <span className={`shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium ${severityColor[ev.severity] || severityColor.low}`}>
-                  {ev.severity}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-slate-700 capitalize">{ev.eventType?.replace(/_/g, ' ')}</p>
-                  {ev.metadata && (
-                    <p className="text-xs text-slate-400 truncate">{JSON.stringify(ev.metadata)}</p>
-                  )}
+          return (
+            <div key={label} className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5">
+              {Icon && <Icon className="hidden h-3.5 w-3.5 shrink-0 text-slate-400 sm:block" />}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[9px] font-medium leading-tight text-slate-500">{label}</p>
+                <div className="flex min-w-0 items-baseline gap-1.5">
+                  <p className={`truncate text-sm font-bold leading-tight ${valueColor}`}>{value ?? 0}</p>
+                  {detail && <p className="truncate text-[9px] leading-tight text-slate-400">{detail}</p>}
                 </div>
-                <span className="shrink-0 text-xs text-slate-400 font-mono">
-                  {ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : ''}
-                </span>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          );
+        })}
       </div>
 
-      {!sessionActive && (
-        <p className="text-xs text-center text-slate-400">Start session to begin integrity monitoring</p>
-      )}
+      <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100 pt-1.5">
+        <div className="mb-1 flex shrink-0 items-center justify-between">
+          <h3 className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Recent events</h3>
+          <span className="text-[10px] font-medium text-slate-400">{eventList.length} recorded</span>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1" aria-live="polite">
+          {eventList.length === 0 ? (
+            <div className="flex h-full min-h-8 items-center justify-center gap-2 text-[10px] text-slate-400">
+              <ShieldAlert className="h-3.5 w-3.5" />
+              {sessionActive ? 'No integrity events recorded yet' : 'No session activity yet'}
+            </div>
+          ) : (
+            <ul className="space-y-1">
+              {eventList.map((ev, i) => (
+                <li key={ev.id || `${ev.eventType}-${ev.timestamp}-${i}`} className="flex min-w-0 items-center gap-2 rounded-md border border-slate-100 bg-white px-2 py-1">
+                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${severityColor[ev.severity] || severityColor.low}`}>
+                    {ev.severity || 'low'}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[10px] font-medium capitalize text-slate-700">
+                    {ev.eventType === 'gaze_lookaway' ? 'Eye look-away' : ev.eventType?.replace(/_/g, ' ') || 'Integrity event'}
+                    {ev.metadata && <span className="ml-1 font-normal text-slate-400">· {JSON.stringify(ev.metadata)}</span>}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1 text-[9px] tabular-nums text-slate-400">
+                    <Clock3 className="h-3 w-3" />
+                    {ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
-
