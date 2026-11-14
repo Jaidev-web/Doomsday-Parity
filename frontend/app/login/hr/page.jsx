@@ -279,6 +279,7 @@ export default function HRAuthPage({ initialTab = 'login' }) {
 
                 {/* Form */}
                 <form
+                  method="post"
                   onSubmit={activeTab === 'login' ? handleLoginSubmit : handleSignupSubmit}
                   className="space-y-4"
                 >

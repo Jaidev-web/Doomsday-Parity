@@ -11,9 +11,8 @@ import {
  * Used in both HR Portal (as HR's self camera preview & broadcast control)
  * and Candidate Portal (as the incoming HR / AI Interviewer video feed).
  *
- * Backend integration points:
- * - WebRTC stream: /api/interviews/{sessionId}/webrtc/hr-stream
- * - Audio broadcast: /api/interviews/{sessionId}/audio/broadcast
+ * The peer connection uses backend offer/answer/ICE signaling. Audio and video
+ * travel directly between participant browsers after negotiation.
  */
 export default function HRCameraTile({
   mode = 'hr', // 'hr' (self-control) | 'candidate' (viewer view)
@@ -22,72 +21,61 @@ export default function HRCameraTile({
   isSpeaking = false,
   className = '',
   compact = false,
+  localStream = null,
+  remoteStream = null,
+  connectionState = 'waiting',
 }) {
   const [cameraActive, setCameraActive] = useState(true);
   const [micActive, setMicActive] = useState(true);
-  const [stream, setStream] = useState(null);
   const videoRef = useRef(null);
+  const activeStream = mode === 'hr' ? localStream : remoteStream;
 
-  // For HR mode, optionally request local webcam stream for preview
   useEffect(() => {
-    let localStream = null;
-    if (mode === 'hr' && cameraActive) {
-      if (navigator?.mediaDevices?.getUserMedia) {
-        navigator.mediaDevices
-          .getUserMedia({ video: { width: 320, height: 240 }, audio: false })
-          .then((s) => {
-            localStream = s;
-            setStream(s);
-            if (videoRef.current) {
-              videoRef.current.srcObject = s;
-              videoRef.current.play().catch(() => {});
-            }
-          })
-          .catch(() => {
-            // Webcam busy or not permitted, use stylized placeholder
-            setStream(null);
-          });
-      }
-    } else {
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-        setStream(null);
-      }
+    if (videoRef.current) {
+      videoRef.current.srcObject = activeStream;
+      if (activeStream) videoRef.current.play().catch(() => {});
     }
+  }, [activeStream]);
 
-    return () => {
-      if (localStream) {
-        localStream.getTracks().forEach((t) => t.stop());
-      }
-    };
-  }, [mode, cameraActive]);
+  useEffect(() => {
+    if (mode !== 'hr' || !localStream) return;
+    localStream.getVideoTracks().forEach((track) => { track.enabled = cameraActive; });
+    localStream.getAudioTracks().forEach((track) => { track.enabled = micActive; });
+  }, [mode, localStream, cameraActive, micActive]);
 
   return (
     <div className={`relative bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shadow-xs flex flex-col justify-between ${className}`}>
       {/* Top Overlay Badge Bar */}
       <div className="absolute top-2.5 left-2.5 right-2.5 z-10 flex items-center justify-between">
         <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full text-white text-[11px] font-medium border border-white/10">
-          <span className={`w-2 h-2 rounded-full ${cameraActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
+          <span className={`w-2 h-2 rounded-full ${(mode === 'hr' ? cameraActive : Boolean(remoteStream)) ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
           <span className="truncate max-w-[140px]">{mode === 'hr' ? 'HR Camera (You)' : 'HR Interviewer'}</span>
         </div>
 
         <div className="flex items-center gap-1 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full text-white text-[10px] font-mono border border-white/10">
           <Wifi className="w-3 h-3 text-emerald-400" />
-          <span>HD 720p</span>
+          <span>{connectionState === 'connected' ? 'Connected' : 'Waiting'}</span>
         </div>
       </div>
 
       {/* Main Video or Stylized Placeholder Feed */}
       <div className={`relative w-full aspect-video ${compact ? 'min-h-0' : 'min-h-[140px] sm:min-h-[160px]'} bg-gradient-to-b from-slate-800 to-slate-950 flex items-center justify-center overflow-hidden`}>
-        {stream && cameraActive ? (
+        {activeStream && (mode !== 'hr' || cameraActive) ? (
           <video
             ref={videoRef}
             autoPlay
             playsInline
-            muted
+            muted={mode === 'hr'}
+            controls={mode === 'candidate'}
             className="w-full h-full object-cover mirror"
             style={{ transform: 'scaleX(-1)' }}
           />
+        ) : mode === 'candidate' ? (
+          <div className="flex flex-col items-center justify-center p-4 text-center text-slate-400">
+            <Wifi className="mb-2 h-6 w-6" />
+            <span className="text-xs font-semibold text-white">{connectionState === 'closed' ? 'Interview room closed' : 'Connecting to the interviewer…'}</span>
+            <span className="mt-1 text-[10px]">This video appears when both participants are connected.</span>
+          </div>
         ) : cameraActive ? (
           /* Stylized Professional Interviewer Feed Placeholder */
           <div className="flex flex-col items-center justify-center p-4 text-center space-y-2">
@@ -134,7 +122,9 @@ export default function HRCameraTile({
         <div className="flex items-center gap-1.5 truncate">
           <Shield className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
           <span className={`text-slate-300 truncate ${compact ? 'text-[9px]' : 'text-[11px]'}`}>
-            {mode === 'hr' ? 'Broadcasting live to candidate' : 'Verified TrustHire Interviewer'}
+            {mode === 'hr'
+              ? (connectionState === 'connected' ? 'Peer-to-peer interview' : 'Local camera preview')
+              : (connectionState === 'connected' ? 'Peer-to-peer interview' : 'Waiting for interviewer video')}
           </span>
         </div>
 

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, Body, File, Form, HTTPException, UploadFile
+from fastapi import Query
 from datetime import datetime
 from typing import Dict, Optional
 import uuid
@@ -170,6 +171,8 @@ async def update_interview_question_queue(session_id: str, update: InterviewQues
     session = db.get("interviews", session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
+    if session.get("status") != "active":
+        raise HTTPException(status_code=409, detail="Interview session is not active")
     queue = [question.model_dump() for question in update.questions]
     db.update("interviews", session_id, {"question_queue": queue})
     return {"questions": queue}
@@ -177,10 +180,29 @@ async def update_interview_question_queue(session_id: str, update: InterviewQues
 
 @router.post("/{session_id}/questions/from-resume")
 async def generate_question_from_resume(session_id: str, request: InterviewQuestionGenerationRequest):
-    if not db.get("interviews", session_id):
+    session = db.get("interviews", session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
+    if session.get("status") != "active":
+        raise HTTPException(status_code=409, detail="Interview session is not active")
+    # Include uploaded resume text when available so the model can ground its
+    # question in the candidate's actual document. Demo candidates without an
+    # uploaded document still get a useful deterministic question.
+    resume_docs = db.list("documents", {
+        "candidate_id": session.get("candidate_id"),
+        "document_type": "resume",
+    })
+    resume_text = "\n".join(
+        str(document.get("extracted_text") or "") for document in resume_docs
+    ).strip()
+    context = request.context or ""
+    if resume_text:
+        context = f"{context}\nResume evidence: {resume_text[:12000]}".strip()
     try:
-        question = await interview_service.generate_question(request.model_dump())
+        question = await interview_service.generate_question({
+            **request.model_dump(),
+            "context": context or None,
+        })
         return [question]
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Gemma question generation failed: {exc}") from exc
@@ -191,6 +213,8 @@ async def update_interview_gaze(session_id: str, update: InterviewGazeUpdate):
     session = db.get("interviews", session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
+    if session.get("status") != "active":
+        raise HTTPException(status_code=409, detail="Interview session is not active")
     return interview_service.update_gaze_status(
         session_id,
         update.model_dump(mode="json"),
@@ -235,9 +259,57 @@ async def record_event(session_id: str, event: InterviewEvent):
     session = db.get("interviews", session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
+    if session.get("status") != "active":
+        raise HTTPException(status_code=409, detail="Interview session is not active")
 
     result = interview_service.process_event(session_id, event.model_dump(mode="json"))
     return result
+
+
+@router.post("/{session_id}/webrtc/signals")
+async def post_webrtc_signal(session_id: str, signal: Dict = Body(...)):
+    session = db.get("interviews", session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+    if session.get("status") != "active":
+        raise HTTPException(status_code=409, detail="Interview session is not active")
+    role = signal.get("role")
+    signal_type = signal.get("type")
+    payload = signal.get("payload")
+    if role not in {"hr", "candidate"} or signal_type not in {"description", "ice_candidate"} or not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="A valid role, signal type, and signal payload are required")
+    if len(str(payload)) > 100_000:
+        raise HTTPException(status_code=413, detail="WebRTC signal payload is too large")
+
+    signals = session.get("webrtc_signals", [])
+    sequence = (signals[-1]["sequence"] if signals else 0) + 1
+    signals.append({
+        "sequence": sequence,
+        "role": role,
+        "type": signal_type,
+        "payload": payload,
+        "created_at": datetime.utcnow().isoformat(),
+    })
+    db.update("interviews", session_id, {"webrtc_signals": signals[-300:]})
+    return {"sequence": sequence}
+
+
+@router.get("/{session_id}/webrtc/signals")
+async def get_webrtc_signals(
+    session_id: str,
+    role: str = Query(..., pattern="^(hr|candidate)$"),
+    after: int = Query(0, ge=0),
+):
+    session = db.get("interviews", session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+    signals = session.get("webrtc_signals", [])
+    unseen = [signal for signal in signals if signal["sequence"] > after]
+    return {
+        "signals": [signal for signal in unseen if signal["role"] != role],
+        "next_cursor": unseen[-1]["sequence"] if unseen else after,
+        "status": session.get("status"),
+    }
 
 
 @router.post("/{session_id}/analyze")

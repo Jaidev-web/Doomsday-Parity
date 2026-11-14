@@ -1,5 +1,8 @@
 'use client';
 
+'use client';
+
+import { useEffect, useRef } from 'react';
 import { CameraOff, Eye, EyeOff, Shield } from 'lucide-react';
 
 export default function CameraMonitorPanel({
@@ -9,7 +12,23 @@ export default function CameraMonitorPanel({
   faceDetected = null,
   candidateName = 'Candidate',
   overlay = false,
+  candidateStream = null,
+  connectionState = 'waiting',
 }) {
+  const videoRef = useRef(null);
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = candidateStream;
+      if (candidateStream) videoRef.current.play().catch(() => {});
+    }
+    if (audioRef.current) {
+      audioRef.current.srcObject = candidateStream;
+      if (candidateStream) audioRef.current.play().catch(() => {});
+    }
+  }, [candidateStream]);
+
   const config = {
     high: { label: 'Looking at screen', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', dot: 'bg-emerald-500', icon: Eye },
     low: { label: 'Looking away from screen', color: 'text-rose-700', bg: 'bg-rose-50 border-rose-200', dot: 'bg-rose-500', icon: EyeOff },
@@ -22,11 +41,20 @@ export default function CameraMonitorPanel({
   return (
     <div className="relative">
       <div className="relative flex aspect-video flex-col items-center justify-center gap-2 overflow-hidden bg-slate-900 p-5 text-center">
-        <CameraOff className="w-8 h-8 text-slate-500" />
-        <span className="text-xs font-medium text-slate-300">{candidateName} · Candidate-side eye tracking</span>
-        <span className="max-w-xs text-[10px] leading-relaxed text-slate-500">
-          Eye landmarks are processed on the candidate’s device. Only the attention status is sent to this session.
-        </span>
+        {candidateStream ? (
+          <>
+            <video autoPlay playsInline muted ref={videoRef} className="absolute inset-0 h-full w-full object-cover" />
+            <audio autoPlay controls ref={audioRef} className="absolute bottom-3 right-3 z-20 h-8 w-36" />
+          </>
+        ) : (
+          <>
+            <CameraOff className="w-8 h-8 text-slate-500" />
+            <span className="text-xs font-medium text-slate-300">{candidateName} · {connectionState === 'closed' ? 'Interview ended' : 'Waiting for candidate camera'}</span>
+            <span className="max-w-xs text-[10px] leading-relaxed text-slate-500">
+              Once connected, video is shared peer-to-peer. Eye landmarks are processed on the candidate’s device.
+            </span>
+          </>
+        )}
         <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded bg-black/50 px-2 py-0.5 text-[10px] text-white/70">
           <Shield className="w-3 h-3 text-indigo-400" />
           <span>{active ? 'Session gaze telemetry' : 'Session not started'}</span>
@@ -35,7 +63,7 @@ export default function CameraMonitorPanel({
           <>
             <div className="absolute left-[13px] top-[13px] flex flex-wrap gap-2 text-[11px] font-semibold text-white">
               <span className="rounded-full border border-white/15 bg-black/55 px-3 py-1.5 backdrop-blur">Eye Gaze Monitor</span>
-              <span className="rounded-full border border-white/15 bg-black/55 px-3 py-1.5 backdrop-blur">WebRTC Feed</span>
+              <span className="rounded-full border border-white/15 bg-black/55 px-3 py-1.5 backdrop-blur">{candidateStream ? 'Live candidate video' : 'Waiting for video'}</span>
             </div>
             <div className="absolute bottom-[13px] left-[13px] w-[min(300px,calc(100%_-_240px))] rounded-xl border border-white/15 bg-slate-950/75 p-3 text-left text-white shadow-lg backdrop-blur-md">
               <div className="flex items-center justify-between gap-2">

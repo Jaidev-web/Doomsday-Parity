@@ -50,6 +50,10 @@ export function getInterviewSession(sessionId) {
   return strictInterviewFetch(INTERVIEW_ENDPOINTS.getSession(sessionId));
 }
 
+export function getInterviewReport(sessionId) {
+  return strictInterviewFetch(INTERVIEW_ENDPOINTS.getReport(sessionId));
+}
+
 export function dispatchInterviewQuestion(sessionId, question) {
   return strictInterviewFetch(INTERVIEW_ENDPOINTS.dispatchQuestion(sessionId), {
     method: 'POST',
@@ -93,8 +97,41 @@ export async function getResumeData(candidateId) {
   // BACKEND INTEGRATION: GET /api/candidates/{candidateId}/documents?type=resume
   // Returns parsed resume: { skills, experience, projects, certifications }
   const data = await interviewFetch(`/api/candidates/${candidateId}/documents?type=resume`);
-  if (data) return data;
-  return MOCK_RESUME_DATA[candidateId] || MOCK_RESUME_DATA['cand-sarah-001'];
+  if (data && !Array.isArray(data) && Array.isArray(data.skills)) return data;
+  const resumeDocument = Array.isArray(data)
+    ? data.find((document) => document.document_type === 'resume')
+    : null;
+  const parsedResume = resumeDocument?.metadata?.parsed_resume;
+  if (parsedResume && Array.isArray(parsedResume.skills)) return parsedResume;
+
+  // The current backend stores extracted document text, not parsed resume
+  // fields. Show that document and let the HR generate a grounded question.
+  if (resumeDocument) {
+    const candidate = await interviewFetch(`/api/candidates/${encodeURIComponent(candidateId)}`);
+    return {
+      name: candidate?.name || 'Candidate',
+      position: candidate?.position || 'Interview candidate',
+      summary: resumeDocument.extracted_text?.slice(0, 320) || 'Resume uploaded; no text could be extracted.',
+      resumeText: resumeDocument.extracted_text || '',
+      skills: [],
+      experience: [],
+      projects: [],
+      certifications: [],
+    };
+  }
+
+  if (MOCK_RESUME_DATA[candidateId]) return MOCK_RESUME_DATA[candidateId];
+  const candidate = await interviewFetch(`/api/candidates/${encodeURIComponent(candidateId)}`);
+  if (!candidate) return null;
+  return {
+    name: candidate.name || 'Candidate',
+    position: candidate.position || 'Interview candidate',
+    summary: 'No resume has been uploaded for this candidate yet.',
+    skills: [],
+    experience: [],
+    projects: [],
+    certifications: [],
+  };
 }
 
 export async function generateQuestionsFromResume(sessionId, { skill, project, context }) {
@@ -170,7 +207,7 @@ export async function analyzeResponseForAI(sessionId, { transcript, questionId }
 export async function recordIntegrityEvent(sessionId, event) {
   // BACKEND INTEGRATION: POST /api/interviews/{sessionId}/events
   // Body: { event_type, severity, timestamp, metadata }
-  return interviewFetch(INTERVIEW_ENDPOINTS.recordEvent(sessionId), {
+  return strictInterviewFetch(INTERVIEW_ENDPOINTS.recordEvent(sessionId), {
     method: 'POST',
     body: JSON.stringify({
       event_type: event.event_type || event.eventType,

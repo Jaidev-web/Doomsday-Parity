@@ -7,7 +7,8 @@
     "build:css": "tailwindcss -i ./app/globals.css -o ./app/tailwind.css",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "dev:lan": "next dev --hostname 0.0.0.0 --experimental-https --experimental-https-key ./certs/lan-key.pem --experimental-https-cert ./certs/lan-cert.pem"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.2.3",

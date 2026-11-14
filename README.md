@@ -101,6 +101,30 @@ pnpm run dev
 
 Open `http://localhost:3000` in your browser.
 
+### Use the app from another device on the same Wi-Fi
+
+For candidate camera access, use HTTPS. Browsers block camera access on a LAN address served over plain HTTP. On the host Mac, run this once from the repository root (use the Mac's current Wi-Fi IP if it has changed):
+
+```bash
+bash scripts/setup-lan-dev.sh 10.21.51.15
+```
+
+Then start the backend from `backend/` with TLS enabled and bound to the network:
+
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 \
+  --ssl-keyfile ../frontend/certs/lan-key.pem \
+  --ssl-certfile ../frontend/certs/lan-cert.pem
+```
+
+Start the frontend from `frontend/` in another terminal:
+
+```bash
+pnpm run dev:lan
+```
+
+Open `https://10.21.51.15:3000` on both devices. Install `frontend/public/trusthire-lan-ca.crt` as a trusted certificate authority on the candidate device first; this lets its browser trust the development HTTPS certificate so camera access and API requests work. Keep both devices on the same Wi-Fi, and allow incoming connections for ports 3000 and 8000 in the host Mac firewall. The setup script configures the frontend API URL, backend CORS, and private MongoDB auth settings while preserving any existing frontend mail credentials. For signup verification codes and email sign-in links, configure a valid `GMAIL_USER` and `GMAIL_APP_PASSWORD` in ignored `frontend/.env.local`; the frontend must be restarted after changing these values. The HTTPS URLs are the ones to use for interviews. If the host IP changes, rerun the script with the new IP and restart both servers.
+
 ---
 
 ## Environment Variables

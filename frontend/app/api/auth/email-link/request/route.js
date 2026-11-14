@@ -39,6 +39,9 @@ export async function POST(request) {
       } catch {}
     }
     const message = error?.message || '';
+    if (/^Email delivery is not configured\.|^Could not send the sign-in email\./.test(message)) {
+      return NextResponse.json({ detail: message }, { status: 503 });
+    }
     if (/valid email|valid account type/.test(message)) {
       return NextResponse.json({ detail: message }, { status: 422 });
     }

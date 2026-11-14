@@ -31,11 +31,11 @@ export const INTERVIEW_ENDPOINTS = {
   dispatchQuestion:     (sessionId)   => `/api/interviews/${encodeURIComponent(sessionId)}/question`,
   questionQueue:        (sessionId)   => `/api/interviews/${encodeURIComponent(sessionId)}/questions/queue`,
   updateGaze:           (sessionId)   => `/api/interviews/${encodeURIComponent(sessionId)}/gaze`,
-  completeSession:      (sessionId)   => `/api/interviews/${sessionId}/complete`,
-  getReport:            (sessionId)   => `/api/interviews/${sessionId}/report`,
+  completeSession:      (sessionId)   => `/api/interviews/${encodeURIComponent(sessionId)}/complete`,
+  getReport:            (sessionId)   => `/api/interviews/${encodeURIComponent(sessionId)}/report`,
 
   // Background integrity proctoring
-  recordEvent:          (sessionId)   => `/api/interviews/${sessionId}/events`,
+  recordEvent:          (sessionId)   => `/api/interviews/${encodeURIComponent(sessionId)}/events`,
   uploadCameraFrame:    (sessionId)   => `/api/interviews/${sessionId}/camera-frame`,
 
   // Whisper speech-to-text transcription
@@ -53,5 +53,6 @@ export const INTERVIEW_ENDPOINTS = {
   gemmaFollowUp:        (sessionId)   => `/api/interviews/${sessionId}/gemma/follow-up`,
 
   // WebRTC video feeds (Candidate & HR Camera)
-  webrtcSignal:         (sessionId)   => `/api/interviews/${sessionId}/webrtc/signal`,
+  webrtcSignal:         (sessionId)   => `/api/interviews/${encodeURIComponent(sessionId)}/webrtc/signals`,
+  webrtcSignals:        (sessionId)   => `/api/interviews/${encodeURIComponent(sessionId)}/webrtc/signals`,
 };

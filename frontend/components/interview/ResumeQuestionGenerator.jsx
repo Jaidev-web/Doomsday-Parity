@@ -7,21 +7,27 @@ import { getResumeData, generateQuestionsFromResume } from '@/lib/interview/api'
 
 export default function ResumeQuestionGenerator({ sessionId, candidateId, onAskQuestion }) {
   const [resumeData, setResumeData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loadedCandidateId, setLoadedCandidateId] = useState(null);
   const [generating, setGenerating] = useState(null);
   const [generationError, setGenerationError] = useState('');
   const [expandedSection, setExpandedSection] = useState('skills');
 
   useEffect(() => {
     if (!candidateId) return;
-    setLoading(true);
+    let active = true;
     getResumeData(candidateId)
-      .then((data) => setResumeData(data))
-      .finally(() => setLoading(false));
+      .then((data) => {
+        if (!active) return;
+        setResumeData(data);
+        setLoadedCandidateId(candidateId);
+      });
+    return () => { active = false; };
   }, [candidateId]);
 
+  const loading = loadedCandidateId !== candidateId;
+
   const generateQuestion = async (type, value) => {
-    const key = `${type}:${value}`;
+    const key = `${type}:${value.slice(0, 80)}`;
     setGenerating(key);
     setGenerationError('');
     try {
@@ -35,7 +41,7 @@ export default function ResumeQuestionGenerator({ sessionId, candidateId, onAskQ
       }
     } catch (err) {
       console.error('Question generation error:', err);
-      setGenerationError(err.message || 'Could not generate a question. Check that Gemma is running.');
+      setGenerationError(err.message || 'Could not generate a question. Please try again.');
     } finally {
       setGenerating(null);
     }
@@ -86,6 +92,24 @@ export default function ResumeQuestionGenerator({ sessionId, candidateId, onAskQ
           {resumeData.summary}
         </p>
       </div>
+
+      {resumeData.resumeText && (
+        <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-800">Uploaded resume text</p>
+          <p className="max-h-28 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
+            {resumeData.resumeText.slice(0, 2400)}{resumeData.resumeText.length > 2400 ? '…' : ''}
+          </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!!generating}
+            onClick={() => generateQuestion('experience', resumeData.resumeText.slice(0, 1800))}
+            icon={generating ? Loader2 : Sparkles}
+          >
+            {generating ? 'Generating…' : 'Generate a resume-based question'}
+          </Button>
+        </div>
+      )}
 
       {/* Sections Accordion */}
       <div className="space-y-2">

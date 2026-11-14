@@ -27,7 +27,7 @@ export default function AIQuestionAssistant({ suggestions, onSelectQuestion, onG
         {error && <p role="alert" className="text-xs text-rose-700">{error}</p>}
         <button onClick={onGenerate} disabled={loading} className="w-full flex justify-center items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-          {loading ? 'Generating with Gemma…' : 'Generate a question with Gemma'}
+          {loading ? 'Generating question…' : 'Generate interview question'}
         </button>
       </div>
     );
@@ -70,7 +70,7 @@ export default function AIQuestionAssistant({ suggestions, onSelectQuestion, onG
         {error && <p role="alert" className="text-xs text-rose-700">{error}</p>}
         <button onClick={onGenerate} disabled={loading} className="w-full flex justify-center items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-          {loading ? 'Generating with Gemma…' : 'Generate another question'}
+          {loading ? 'Generating question…' : 'Generate another question'}
         </button>
         <p className="text-xs text-center text-slate-400">Select a suggestion to send it live, or use the ordered queue below.</p>
       </div>

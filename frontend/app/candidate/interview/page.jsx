@@ -16,6 +16,7 @@ import EyeGazeTracker from '@/components/interview/EyeGazeTracker';
 
 // Interview components
 import HRCameraTile from '@/components/interview/HRCameraTile';
+import useInterviewPeer from '@/components/interview/useInterviewPeer';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CANDIDATE INTERVIEW ROOM
@@ -85,6 +86,11 @@ export default function CandidateInterviewPage() {
   const sessionClosedRef = useRef(false);
   const typingBurstRef = useRef({ count: 0, startedAt: null, timer: null });
   const handleGazeStatus = useCallback((assessment) => setGazeAssessment(assessment), []);
+  const { remoteStream: interviewerStream, connectionState: meetingConnectionState } = useInterviewPeer(
+    session?.session_id || session?.id,
+    'candidate',
+    phase === 'active' ? mediaStream : null
+  );
 
   const closeCandidateRoom = useCallback((endedByRecruiter = false) => {
     sessionClosedRef.current = true;
@@ -202,16 +208,18 @@ export default function CandidateInterviewPage() {
       if (burst.timer) clearTimeout(burst.timer);
       burst.timer = null;
       if (!burst.count) return;
-
-      api.interviews.recordEvent(sessionIdRef.current, {
-        event_type: 'typing_detected',
-        timestamp: new Date().toISOString(),
-        details: {
-          key_count: burst.count,
-          duration_ms: Date.now() - burst.startedAt,
-          source: 'candidate_interview_page',
-        },
-      }).catch(() => {});
+      const durationMs = Date.now() - burst.startedAt;
+      if (burst.count >= 6 && durationMs <= 2500) {
+        api.interviews.recordEvent(sessionIdRef.current, {
+          event_type: 'typing_detected',
+          timestamp: new Date().toISOString(),
+          details: {
+            key_count: burst.count,
+            duration_ms: durationMs,
+            source: 'candidate_interview_page',
+          },
+        }).catch(() => {});
+      }
       burst.count = 0;
       burst.startedAt = null;
     };
@@ -241,9 +249,10 @@ export default function CandidateInterviewPage() {
     const onKeyDown = (event) => {
       if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.key.length !== 1) return;
       const burst = typingBurstRef.current;
+      if (burst.count && Date.now() - burst.startedAt > 2500) flushTypingBurst();
       if (!burst.count) burst.startedAt = Date.now();
       burst.count += 1;
-      setTypingWarning(true);
+      if (burst.count >= 6) setTypingWarning(true);
       if (burst.timer) clearTimeout(burst.timer);
       burst.timer = setTimeout(flushTypingBurst, 1200);
     };
@@ -853,8 +862,8 @@ export default function CandidateInterviewPage() {
                 <Video className="w-3.5 h-3.5 text-indigo-600" />
                 Interviewer Camera
               </span>
-              <span className="text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                Connected
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${meetingConnectionState === 'connected' ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-slate-500 bg-slate-50 border-slate-200'}`}>
+                {meetingConnectionState === 'connected' ? 'Connected' : 'Connecting'}
               </span>
             </div>
             <HRCameraTile
@@ -862,6 +871,8 @@ export default function CandidateInterviewPage() {
               interviewerName="Lead Technical Recruiter"
               interviewerRole="TrustHire Evaluation Panel"
               isSpeaking={recState === REC.IDLE}
+              remoteStream={interviewerStream}
+              connectionState={meetingConnectionState}
             />
           </div>
 

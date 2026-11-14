@@ -103,9 +103,22 @@ class AIService:
         return await self._call_gemma(prompt)
 
     async def generate_interview_question(self, skill: Optional[str], project: Optional[str], context: Optional[str]) -> Dict:
-        if self.demo_mode:
-            raise RuntimeError("AI question generation requires AI_DEMO_MODE=false and a reachable Gemma model")
         focus = skill or project or context or "the candidate's role and experience"
+        if self.demo_mode:
+            # Keep the question workflow usable with the seeded, in-memory demo
+            # backend. Make the fallback explicit so the UI never implies that
+            # a local language model produced it.
+            focus_label = str(skill or project or "your resume and experience").strip().rstrip(".")
+            return {
+                "question_id": str(uuid.uuid4()),
+                "question_text": (
+                    f"Describe a specific example of your experience with {focus_label}. "
+                    "What was your role, what decisions did you make, and what was the outcome?"
+                ),
+                "category": "technical" if skill else "resume",
+                "difficulty": "medium",
+                "generation_source": "demo_template",
+            }
         prompt = (
             "Create one clear, open-ended interview question that helps verify the candidate's own experience. "
             "Keep it concise, neutral, answerable aloud, and do not assume facts. Return only JSON with keys "

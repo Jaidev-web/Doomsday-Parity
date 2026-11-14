@@ -3,17 +3,24 @@
 import { useState } from 'react';
 import { ShieldAlert, Wifi, Monitor, Eye, AlertTriangle, Clock, CheckCircle2, XCircle } from 'lucide-react';
 
-export default function IntegrityMonitorPanel({ events, tabSwitches, typingDetections = 0, focusLosses, pasteEvents, screenSharing, sessionActive }) {
+export default function IntegrityMonitorPanel({
+  events,
+  tabSwitches,
+  typingDetections = 0,
+  gazeLookaways = 0,
+  answerIntegrityScore = null,
+  answersAnalyzed = 0,
+  answersPending = 0,
+  answersSubmitted = 0,
+  integrityScore = 100,
+  focusLosses,
+  pasteEvents,
+  screenSharing,
+  sessionActive,
+}) {
   const [expanded, setExpanded] = useState(true);
 
-  const criticalCount = events?.filter((e) => e.severity === 'critical' || e.severity === 'high').length || 0;
-
-  const overallRisk =
-    tabSwitches >= 7 || criticalCount >= 3
-      ? 'critical'
-      : tabSwitches >= 3 || criticalCount >= 1
-      ? 'warning'
-      : 'clean';
+  const overallRisk = integrityScore < 50 ? 'critical' : integrityScore < 80 ? 'warning' : 'clean';
 
   const riskConfig = {
     clean:    { label: 'Clean',    color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', Icon: CheckCircle2 },
@@ -37,12 +44,16 @@ export default function IntegrityMonitorPanel({ events, tabSwitches, typingDetec
           <rc.Icon className={`w-4 h-4 ${rc.color}`} />
           <span className={`text-sm font-semibold ${rc.color}`}>Integrity: {rc.label}</span>
         </div>
-        <span className={`text-xs font-medium ${rc.color}`}>{events?.length || 0} event{events?.length !== 1 ? 's' : ''}</span>
+          <span className={`text-xs font-medium ${rc.color}`}>{integrityScore}% · {events?.length || 0} event{events?.length !== 1 ? 's' : ''}</span>
       </div>
+      <p className="text-[10px] leading-relaxed text-slate-500">
+        Total blends browser monitoring (75%) with conclusive answer style analysis (25%). Before an answer is analyzed, the score uses browser monitoring only.
+      </p>
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-2">
         {[
+          { label: 'Eye look-aways', value: gazeLookaways, warn: 2, crit: 5 },
           { label: 'Tab switches', value: tabSwitches, warn: 3, crit: 7 },
           { label: 'Typing bursts', value: typingDetections, warn: 1, crit: 5 },
           { label: 'Focus losses', value: focusLosses, warn: 2, crit: 5 },
@@ -59,6 +70,17 @@ export default function IntegrityMonitorPanel({ events, tabSwitches, typingDetec
           <p className="text-xs text-slate-500">Screen share</p>
           <p className={`text-sm font-semibold mt-0.5 ${screenSharing ? 'text-indigo-600' : 'text-slate-400'}`}>
             {screenSharing ? 'Active' : 'Off'}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+          <p className="text-xs text-slate-500">Answer integrity signal</p>
+          <p className="mt-0.5 text-lg font-bold text-slate-700">
+            {answerIntegrityScore == null
+              ? answersPending ? 'Analyzing…' : answersSubmitted ? 'No conclusive result' : 'No answers yet'
+              : `${Math.round(answerIntegrityScore)}%`}
+          </p>
+          <p className="text-[10px] leading-relaxed text-slate-400">
+            {answersAnalyzed ? `Based on ${answersAnalyzed} analyzed answer${answersAnalyzed === 1 ? '' : 's'}` : 'Needs a conclusive answer analysis'} · AI style signal, not proof of authorship
           </p>
         </div>
       </div>

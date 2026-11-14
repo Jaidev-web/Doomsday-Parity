@@ -17,7 +17,6 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { Captcha } from '@/components/auth/Captcha';
 import { EmailLinkNotice } from '@/components/auth/EmailLinkNotice';
 import { OtpVerification } from '@/components/auth/OtpVerification';
 import { toast } from '@/components/ui/Toast';
@@ -48,11 +47,6 @@ function CandidateAuthForm({ initialTab = 'login' }) {
     confirmPassword: '',
   });
 
-  // Captcha state
-  const [generatedCaptcha, setGeneratedCaptcha] = useState('');
-  const [enteredCaptcha, setEnteredCaptcha] = useState('');
-  const [captchaError, setCaptchaError] = useState('');
-
   // Email-link flow state
   const [linkTarget, setLinkTarget] = useState('');
   const [resendingLink, setResendingLink] = useState(false);
@@ -64,25 +58,8 @@ function CandidateAuthForm({ initialTab = 'login' }) {
     setForm((current) => ({ ...current, [name]: value }));
   };
 
-  const validateCaptcha = () => {
-    if (!enteredCaptcha) {
-      setCaptchaError('Please enter the security verification code.');
-      toast.error('Please enter the security verification code.');
-      return false;
-    }
-    if (enteredCaptcha.toLowerCase() !== generatedCaptcha.toLowerCase()) {
-      setCaptchaError('Security code does not match. Please try again.');
-      toast.error('Security code mismatch. Try the refreshed code.');
-      return false;
-    }
-    setCaptchaError('');
-    return true;
-  };
-
   const handleTabChange = (newTab) => {
     setActiveTab(newTab);
-    setCaptchaError('');
-    setEnteredCaptcha('');
   };
 
   const handleLoginSubmit = async (e) => {
@@ -92,8 +69,6 @@ function CandidateAuthForm({ initialTab = 'login' }) {
       toast.error('Enter your email address.');
       return;
     }
-
-    if (!validateCaptcha()) return;
 
     setLoading(true);
     toast.loading(loginMethod === 'password' ? 'Signing in…' : 'Sending your secure sign-in link…', { id: 'auth-toast' });
@@ -138,8 +113,6 @@ function CandidateAuthForm({ initialTab = 'login' }) {
       toast.error('The passwords do not match.');
       return;
     }
-
-    if (!validateCaptcha()) return;
 
     setLoading(true);
     toast.loading('Creating your candidate account…', { id: 'signup-toast' });
@@ -381,6 +354,7 @@ function CandidateAuthForm({ initialTab = 'login' }) {
 
                 {/* Form Body */}
                 <form
+                  method="post"
                   onSubmit={activeTab === 'login' ? handleLoginSubmit : handleSignupSubmit}
                   className="space-y-4"
                 >
@@ -486,19 +460,6 @@ function CandidateAuthForm({ initialTab = 'login' }) {
                       </div>
                     </div>
                   )}
-
-                  {/* Anti-Bot Captcha Section (Mandatory for Candidate) */}
-                  <div className="pt-2 border-t border-slate-100">
-                    <Captcha
-                      onCaptchaChange={(code) => setGeneratedCaptcha(code)}
-                      inputCode={enteredCaptcha}
-                      setInputCode={(val) => {
-                        setEnteredCaptcha(val);
-                        if (captchaError) setCaptchaError('');
-                      }}
-                      error={captchaError}
-                    />
-                  </div>
 
                   {/* Submit Button */}
                   <Button

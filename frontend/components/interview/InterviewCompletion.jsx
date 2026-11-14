@@ -1,18 +1,38 @@
 'use client';
 
-import { CheckCircle2, Download, RotateCcw, Trophy, AlertTriangle, Mic, Eye, Shield } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CheckCircle2, Download, RotateCcw, Trophy, AlertTriangle, Mic, Eye, Shield, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
+import { getInterviewReport } from '@/lib/interview/api';
 
 export default function InterviewCompletion({ candidate, sessionId, history, integrityStats, onReset }) {
+  const [finalReport, setFinalReport] = useState(null);
+  useEffect(() => {
+    if (!sessionId) return undefined;
+    let mounted = true;
+    let timer;
+    const refresh = async () => {
+      try {
+        const report = await getInterviewReport(sessionId);
+        if (!mounted) return;
+        setFinalReport(report);
+        if (report.answers_pending > 0) timer = window.setTimeout(refresh, 1500);
+      } catch {
+        if (mounted) timer = window.setTimeout(refresh, 3000);
+      }
+    };
+    refresh();
+    return () => {
+      mounted = false;
+      window.clearTimeout(timer);
+    };
+  }, [sessionId]);
+
   const questionCount = history?.length || 0;
-  const aiFlags = history?.filter((h) => h.aiFlag).length || 0;
-  const integrityRisk =
-    integrityStats?.tabSwitches >= 7 || aiFlags >= 2
-      ? 'critical'
-      : integrityStats?.tabSwitches >= 3 || aiFlags >= 1
-      ? 'warning'
-      : 'clean';
+  const aiFlags = finalReport?.ai_flagged_answers ?? history?.filter((h) => h.aiFlag).length ?? 0;
+  const integrityScore = finalReport?.integrity_score ?? integrityStats?.integrityScore ?? 100;
+  const integrityRisk = integrityScore < 50 ? 'critical' : integrityScore < 80 ? 'warning' : 'clean';
 
   const riskConfig = {
     clean:    { label: 'Clean', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', Icon: CheckCircle2 },
@@ -36,11 +56,14 @@ export default function InterviewCompletion({ candidate, sessionId, history, int
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {[
             { label: 'Questions', value: questionCount, Icon: Mic, color: 'text-indigo-600', bg: 'bg-indigo-50' },
             { label: 'AI Flags', value: aiFlags, Icon: Eye, color: aiFlags > 0 ? 'text-rose-600' : 'text-emerald-600', bg: aiFlags > 0 ? 'bg-rose-50' : 'bg-emerald-50' },
-            { label: 'Tab Switches', value: integrityStats?.tabSwitches || 0, Icon: Shield, color: integrityStats?.tabSwitches >= 3 ? 'text-amber-600' : 'text-slate-600', bg: 'bg-slate-50' },
+            { label: 'Tab Switches', value: finalReport?.tab_switches ?? integrityStats?.tabSwitches ?? 0, Icon: Shield, color: (finalReport?.tab_switches ?? integrityStats?.tabSwitches ?? 0) >= 3 ? 'text-amber-600' : 'text-slate-600', bg: 'bg-slate-50' },
+            { label: 'Eye Look-Aways', value: finalReport?.gaze_lookaways ?? integrityStats?.gazeAwayCount ?? 0, Icon: Eye, color: (finalReport?.gaze_lookaways ?? integrityStats?.gazeAwayCount ?? 0) >= 3 ? 'text-amber-600' : 'text-slate-600', bg: 'bg-slate-50' },
+            { label: 'Typing Bursts', value: finalReport?.typing_bursts ?? integrityStats?.typingDetections ?? 0, Icon: MessageSquare, color: (finalReport?.typing_bursts ?? integrityStats?.typingDetections ?? 0) >= 3 ? 'text-amber-600' : 'text-slate-600', bg: 'bg-slate-50' },
+            { label: 'Answer Integrity', value: finalReport?.answer_integrity_score == null ? (finalReport?.answers_pending > 0 ? 'Analyzing…' : finalReport?.answers_submitted > 0 ? 'No result' : 'No answers') : `${Math.round(finalReport.answer_integrity_score)}%`, Icon: Shield, color: finalReport?.answer_integrity_score != null && finalReport.answer_integrity_score < 50 ? 'text-rose-600' : 'text-slate-600', bg: 'bg-slate-50' },
           ].map(({ label, value, Icon, color, bg }) => (
             <div key={label} className={`${bg} rounded-xl p-3 text-center`}>
               <Icon className={`w-5 h-5 mx-auto mb-1 ${color}`} />
@@ -55,7 +78,10 @@ export default function InterviewCompletion({ candidate, sessionId, history, int
           <rc.Icon className={`w-5 h-5 shrink-0 ${rc.color}`} />
           <div>
             <p className={`text-sm font-semibold ${rc.color}`}>{rc.label}</p>
-            <p className="text-xs text-slate-500 mt-0.5">Based on integrity monitoring and AI response analysis</p>
+            <p className="text-xs text-slate-500 mt-0.5">{integrityScore}% total integrity · combines browser monitoring and conclusive answer style signals when available</p>
+          </div>
+          <div className="ml-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-4 border-current text-sm font-bold" aria-label={`${integrityScore}% integrity score`}>
+            {integrityScore}%
           </div>
         </div>
 
