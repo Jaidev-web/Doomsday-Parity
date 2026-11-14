@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { mongoAuth } from '@/lib/mongo-auth';
 import { storeAppSession } from '@/lib/auth-session';
 
-export default function EmailLinkCallbackPage() {
+function EmailLinkCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const started = useRef(false);
@@ -60,5 +60,19 @@ export default function EmailLinkCallbackPage() {
         )}
       </section>
     </main>
+  );
+}
+
+export default function EmailLinkCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+          <p className="text-sm text-slate-500">Loading sign-in verification…</p>
+        </main>
+      }
+    >
+      <EmailLinkCallbackContent />
+    </Suspense>
   );
 }

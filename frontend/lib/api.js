@@ -85,6 +85,16 @@ export const api = {
       return safeFetch(`/api/candidates/${candidateId}/documents`, { throwOnError: true });
     },
   },
+  verifications: {
+    list: async (candidateId) => {
+      const data = await safeFetch(`/api/candidates/${candidateId}/verifications`);
+      if (data && data.results) return data.results;
+      return null;
+    },
+    trigger: async (candidateId) => {
+      return safeFetch(`/api/candidates/${candidateId}/verify`, { method: 'POST' });
+    },
+  },
   credentials: {
     get: async (candidateId) => {
       const data = await safeFetch(`/api/candidates/${candidateId}/credentials`);

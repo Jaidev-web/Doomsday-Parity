@@ -78,6 +78,7 @@ export async function POST(request) {
     }
     console.error('Signup OTP request failed:', {
       name: error?.name || 'Error',
+      message: error?.message || null,
       code: error?.code || null,
       responseCode: error?.responseCode || null,
       command: error?.command || null,

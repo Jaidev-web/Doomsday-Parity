@@ -1,6 +1,5 @@
 from app.config import settings
 from app.db.mock_db import MockDB
-from app.db.mongodb import MongoDB
 
 class DatabaseManager:
     def __init__(self):
@@ -12,6 +11,10 @@ class DatabaseManager:
             if settings.DEMO_MODE:
                 self._db = MockDB()
             elif settings.DATABASE_BACKEND.lower() == "mongodb":
+                try:
+                    from app.db.mongodb import MongoDB
+                except ImportError as exc:
+                    raise RuntimeError("pymongo and gridfs are required when DEMO_MODE is False.") from exc
                 self._db = MongoDB()
                 self._db.initialize()
             else:

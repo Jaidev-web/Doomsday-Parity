@@ -427,6 +427,31 @@ If Firefox reports that it cannot connect to `localhost:3000`, check that the fr
 - **Page Swapping Transition**:
   - Mounted `<main key={pathname} className="animate-in fade-in-50 duration-200">` in the candidate layout so transitioning between candidate pages provides the same seamless swapping fade effect as the recruiter dashboard.
 
+### M. Document Verification Pipeline & HR Dashboard Live Integration
+- **Gemma 4 Document Verification Service (`backend/app/services/document_verification_service.py`)**:
+  - Automatically triggered upon candidate document upload.
+  - Specialized multi-prompt verification pipeline:
+    - **Resume**: Prompts Gemma AI to extract employment timeline, verified skills, detect tenure conflicts, gaps, and calculate an overall risk tier (`low`, `medium`, `high`, `critical`).
+    - **Certificate**: Checks issuing authority authenticity, issue/expiration date validity, and candidate name concordance.
+    - **Identity Document**: Evaluates document completeness, government ID classification (passport, national ID, driver's license), and legal name matching.
+  - Generates structured verification audit records conforming to TrustHire schema (`module`, `check_type`, `status`, `severity`, `title`, `explanation`, `evidence`, `source="gemma_ai"`).
+- **FastAPI Endpoints (`backend/app/routers/documents.py`)**:
+  - `POST /api/candidates/{id}/documents`: Ingests files, extracts text (PyPDF2, python-docx), invokes `document_verification_service.verify_document()`, stores verifications in database, and automatically triggers `trust_service.calculate_trust_score(candidate_id)`.
+  - `GET /api/candidates/{id}/verifications`: Retrieves candidate's complete live verification history.
+  - `POST /api/candidates/{id}/verify`: Re-evaluates all existing uploaded documents on-demand.
+- **HR Dashboard Real-Time Integration (`frontend/app/dashboard/candidates/`)**:
+  - `candidates/page.jsx`:
+    - Reads candidates live from `api.candidates.list()` with fallback to demo data.
+    - Clicking the interactive **Credentials** or **Identity** pills opens the verification inspection modal loaded with live Gemma AI checks.
+    - Horizontal trust bar dynamically renders real-time trust score directly below the numerical rating.
+  - `candidates/[id]/page.jsx`:
+    - Added dedicated **"Documents"** tab alongside Overview, Credentials, Identity, and Interview Audit.
+    - Shows all uploaded files (filename, file size, upload timestamp, extracted text preview) along with per-document Gemma AI findings.
+- **Candidate Submission Flow (`frontend/app/candidate/apply/page.jsx`)**:
+  - Uploads resume, certificate, and ID documents to the backend.
+  - Automatically calculates and updates the candidate's real-time trust rating upon submission.
+  - Presents candidate with a multi-vector completion card and direct navigation to the Interview Room.
+
 ---
 
 ## 10. Immediate Next Steps / Roadmap for Contributors

@@ -162,6 +162,14 @@ export default function CandidateApplyPage() {
       }
 
       setSubmittedDocuments(uploaded);
+
+      // Trigger/poll trust score after upload — backend already ran Gemma async
+      try {
+        await api.trust.calculate(newId);
+      } catch {
+        // non-critical
+      }
+
       setVerificationStage('credentials');
       setShowVerificationModal(true);
     } catch (err) {

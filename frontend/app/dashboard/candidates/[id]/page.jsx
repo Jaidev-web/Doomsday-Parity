@@ -17,6 +17,8 @@ import {
   Clock,
   Download,
   Share2,
+  FileText,
+  File,
 } from 'lucide-react';
 
 function GithubIcon({ className = "w-4 h-4" }) {
@@ -52,6 +54,7 @@ export default function CandidateProfilePage() {
 
   const [candidate, setCandidate] = useState(null);
   const [verifications, setVerifications] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [selectedFindingForChat, setSelectedFindingForChat] = useState(null);
@@ -65,16 +68,32 @@ export default function CandidateProfilePage() {
         const c = await api.candidates.get(id);
         setCandidate(c || DEMO_CANDIDATES[0]);
 
-        // Load verifications
-        const creds = await api.credentials.get(id);
-        const idents = await api.identity.get(id);
-        const allVers = [...(creds || []), ...(idents || [])];
+        // Load verifications — try unified endpoint first, then fall back to module endpoints
+        let allVers = [];
+        try {
+          const unified = await api.verifications.list(id);
+          if (unified && unified.length > 0) {
+            allVers = unified;
+          }
+        } catch {}
+
+        if (!allVers.length) {
+          const creds = await api.credentials.get(id);
+          const idents = await api.identity.get(id);
+          allVers = [...(creds || []), ...(idents || [])];
+        }
 
         if (allVers.length > 0) {
           setVerifications(allVers);
         } else {
           setVerifications(DEMO_VERIFICATIONS[id] || DEMO_VERIFICATIONS['cand-sarah-001'] || []);
         }
+
+        // Load uploaded documents
+        try {
+          const docs = await api.documents.list(id);
+          if (docs && docs.length) setDocuments(docs);
+        } catch {}
       } catch (err) {
         console.warn('Failed to load candidate, using fallback:', err);
         const fallback = DEMO_CANDIDATES.find((c) => c.id === id) || DEMO_CANDIDATES[0];
@@ -141,7 +160,13 @@ export default function CandidateProfilePage() {
     { id: 'credentials', label: 'Credentials', icon: FileCheck, badge: credentialVers.length },
     { id: 'identity', label: 'Identity', icon: Fingerprint, badge: identityVers.length },
     { id: 'interview', label: 'Interview Audit', icon: Video, badge: interviewVers.length },
+    { id: 'documents', label: 'Documents', icon: FileText, badge: documents.length || undefined },
   ];
+
+  // Helpers for Documents tab
+  const docTypeLabel = (t) =>
+    t === 'resume' ? 'Resume' : t === 'certificate' ? 'Certificate' : t === 'id_document' ? 'Gov. ID' : t;
+  const findingsForDoc = (docId) => candVers.filter((v) => v.document_id === docId);
 
   return (
     <div className="space-y-6">
@@ -470,6 +495,132 @@ export default function CandidateProfilePage() {
                   ) : (
                     <div className="p-6 text-center text-xs text-slate-500">
                       No interview findings logged yet. Use the Live Interview Monitor to simulate or conduct an assessment session.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Tab 5: Documents */}
+          {activeTab === 'documents' && (
+            <div className="space-y-5">
+              <Card>
+                <CardHeader>
+                  <div>
+                    <CardTitle>Uploaded Verification Documents</CardTitle>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Files submitted by the candidate with Gemma AI analysis results per document.
+                    </p>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {documents.length === 0 ? (
+                    <div className="p-8 text-center space-y-2">
+                      <File className="w-10 h-10 text-slate-300 mx-auto" />
+                      <p className="text-sm font-semibold text-slate-600">No documents uploaded yet</p>
+                      <p className="text-xs text-slate-400">
+                        When the candidate submits documents they will appear here with AI verification findings.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      {documents.map((doc) => {
+                        const docFindings = findingsForDoc(doc.id);
+                        const hasFail = docFindings.some((f) => f.status === 'failed');
+                        const hasWarn = docFindings.some((f) => f.status === 'warning');
+                        const docStatus = hasFail ? 'failed' : hasWarn ? 'warning' : 'passed';
+                        const docStatusColor = hasFail
+                          ? 'text-rose-600 bg-rose-50 border-rose-200'
+                          : hasWarn
+                          ? 'text-amber-600 bg-amber-50 border-amber-200'
+                          : 'text-emerald-600 bg-emerald-50 border-emerald-200';
+
+                        return (
+                          <div
+                            key={doc.id}
+                            className="p-4 rounded-xl border border-slate-200 bg-white space-y-3 transition-shadow hover:shadow-sm"
+                          >
+                            {/* Doc header */}
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3">
+                                <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
+                                  <FileText className="w-4 h-4 text-indigo-600" />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900 truncate max-w-xs">
+                                    {doc.filename}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                    <span className="text-[11px] text-slate-500 font-medium">
+                                      {docTypeLabel(doc.document_type)}
+                                    </span>
+                                    <span className="text-slate-200">·</span>
+                                    <span className="text-[11px] text-slate-400">
+                                      {doc.file_size ? `${(doc.file_size / 1024).toFixed(0)} KB` : '—'}
+                                    </span>
+                                    <span className="text-slate-200">·</span>
+                                    <span className="text-[11px] text-slate-400">
+                                      {doc.upload_date ? new Date(doc.upload_date).toLocaleDateString() : '—'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <span
+                                className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border shrink-0 ${docStatusColor}`}
+                              >
+                                {docStatus}
+                              </span>
+                            </div>
+
+                            {/* AI Findings for this document */}
+                            {docFindings.length > 0 && (
+                              <div className="space-y-2 pl-1">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                  Gemma AI Findings ({docFindings.length})
+                                </p>
+                                {docFindings.map((f) => (
+                                  <div
+                                    key={f.id}
+                                    className="flex items-start gap-2 p-2.5 rounded-lg bg-slate-50 border border-slate-100"
+                                  >
+                                    {f.status === 'passed' ? (
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                                    ) : f.status === 'warning' ? (
+                                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                                    ) : (
+                                      <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                                    )}
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-semibold text-slate-800">{f.title}</p>
+                                      <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{f.explanation}</p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {docFindings.length === 0 && (
+                              <p className="text-[11px] text-slate-400 italic pl-1">
+                                No AI findings recorded for this document yet.
+                              </p>
+                            )}
+
+                            {/* Extracted text preview */}
+                            {doc.extracted_text && doc.extracted_text.length > 10 && (
+                              <details className="text-[11px] text-slate-500">
+                                <summary className="cursor-pointer text-indigo-600 hover:text-indigo-800 font-medium">
+                                  View extracted text preview
+                                </summary>
+                                <pre className="mt-2 p-2.5 rounded-lg bg-slate-50 border border-slate-100 whitespace-pre-wrap font-mono text-[10px] text-slate-700 max-h-40 overflow-y-auto">
+                                  {doc.extracted_text.slice(0, 800)}
+                                  {doc.extracted_text.length > 800 ? '\n… (truncated)' : ''}
+                                </pre>
+                              </details>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>

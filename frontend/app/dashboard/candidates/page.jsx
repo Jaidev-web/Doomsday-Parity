@@ -34,6 +34,8 @@ export default function CandidatesListPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [viewMode, setViewMode] = useState('table'); // Default to list view as requested
   const [tableModal, setTableModal] = useState({ isOpen: false, type: null, candidate: null });
+  const [liveVerifications, setLiveVerifications] = useState({});
+  const [modalVerifications, setModalVerifications] = useState([]);
 
   useEffect(() => {
     async function fetchCandidates() {
@@ -46,6 +48,23 @@ export default function CandidatesListPage() {
     }
     fetchCandidates();
   }, []);
+
+  // Fetch live verifications when modal opens
+  useEffect(() => {
+    if (!tableModal.isOpen || !tableModal.candidate) {
+      setModalVerifications([]);
+      return;
+    }
+    async function fetchModalVerifications() {
+      try {
+        const data = await api.verifications.list(tableModal.candidate.id);
+        setModalVerifications(data || []);
+      } catch {
+        setModalVerifications([]);
+      }
+    }
+    fetchModalVerifications();
+  }, [tableModal.isOpen, tableModal.candidate?.id]);
 
   const filtered = candidates.filter((c) => {
     const matchesSearch =
@@ -74,9 +93,13 @@ export default function CandidatesListPage() {
   };
 
   const activeChecks = tableModal.candidate
-    ? (DEMO_VERIFICATIONS[tableModal.candidate.id] || []).filter(
-        (v) => v.module === tableModal.type
-      )
+    ? (() => {
+        const candidateId = tableModal.candidate.id;
+        const liveChecks = modalVerifications.length > 0
+          ? modalVerifications
+          : (DEMO_VERIFICATIONS[candidateId] || []);
+        return liveChecks.filter((v) => v.module === tableModal.type);
+      })()
     : [];
 
   return (

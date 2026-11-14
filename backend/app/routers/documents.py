@@ -8,8 +8,13 @@ import uuid
 from app.models.document import DocumentResponse
 from app.db import db
 from app.config import settings
-from app.db.mongodb import MongoDB
+try:
+    from app.db.mongodb import MongoDB
+except ImportError:
+    MongoDB = None
 from app.services.document_service import document_service
+from app.services.document_verification_service import document_verification_service
+from app.services.trust_service import trust_service
 
 router = APIRouter(tags=["documents"])
 logger = logging.getLogger(__name__)
@@ -89,6 +94,21 @@ async def upload_document(
                 logger.warning("Could not clean up unindexed document file %s", storage_path)
         logger.exception("Could not save candidate document metadata (%s)", type(exc).__name__)
         raise HTTPException(status_code=503, detail="Could not save document metadata") from exc
+
+    # --- Gemma AI verification pipeline ---
+    try:
+        verification_results = await document_verification_service.verify_document(doc, candidate)
+        for result in verification_results:
+            try:
+                db.add("verifications", result)
+            except Exception:
+                pass  # Don't fail the upload if storing a verification fails
+        # Recalculate trust score with the new verification data
+        trust_service.calculate_trust_score(candidate_id)
+    except Exception as exc:
+        # Verification failure must NOT fail the upload – log and continue
+        logger.warning("Gemma verification failed for doc %s: %s", document_id, exc)
+
     return doc
 
 
@@ -106,3 +126,46 @@ async def get_document(doc_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     return doc
+
+
+@router.get("/candidates/{candidate_id}/verifications")
+async def list_candidate_verifications(candidate_id: str):
+    """Return all AI verification results for a candidate."""
+    candidate = db.get("candidates", candidate_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    results = db.list("verifications", {"candidate_id": candidate_id})
+    return {"candidate_id": candidate_id, "results": results}
+
+
+@router.post("/candidates/{candidate_id}/verify")
+async def trigger_verification(candidate_id: str):
+    """
+    Re-run Gemma AI verification over all uploaded documents for a candidate.
+    Returns the updated verification list and recalculated trust score.
+    """
+    candidate = db.get("candidates", candidate_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    documents = db.list("documents", {"candidate_id": candidate_id})
+    all_results = []
+
+    for doc in documents:
+        try:
+            results = await document_verification_service.verify_document(doc, candidate)
+            for result in results:
+                try:
+                    db.add("verifications", result)
+                    all_results.append(result)
+                except Exception:
+                    pass
+        except Exception as exc:
+            logger.warning("Verification failed for doc %s: %s", doc.get("id"), exc)
+
+    trust = trust_service.calculate_trust_score(candidate_id)
+    return {
+        "candidate_id": candidate_id,
+        "verifications": all_results,
+        "trust": trust,
+    }
