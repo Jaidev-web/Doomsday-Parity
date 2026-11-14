@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { mongoAuth } from '@/lib/mongo-auth';
 import { storeAppSession } from '@/lib/auth-session';
 
-export default function EmailLinkCallbackPage() {
+function EmailLinkCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const started = useRef(false);
@@ -28,8 +28,8 @@ export default function EmailLinkCallbackPage() {
     }
 
     mongoAuth.consumeSignInLink({ token, role })
-      .then(({ user }) => {
-        storeAppSession(role, user);
+      .then((session) => {
+        storeAppSession(role, { ...(session?.user || session), access_token: session?.access_token });
         const pendingInterviewId = window.localStorage.getItem('pending_interview_id');
         if (role === 'candidate' && pendingInterviewId) {
           window.localStorage.removeItem('pending_interview_id');
@@ -60,5 +60,22 @@ export default function EmailLinkCallbackPage() {
         )}
       </section>
     </main>
+  );
+}
+
+export default function EmailLinkCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+          <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-md">
+            <h1 className="text-xl font-bold text-slate-900">Finish signing in</h1>
+            <p className="mt-3 text-sm text-slate-500">Loading sign-in verification…</p>
+          </section>
+        </main>
+      }
+    >
+      <EmailLinkCallbackContent />
+    </Suspense>
   );
 }
